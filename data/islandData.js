@@ -1,94 +1,124 @@
-// Resort Explore v0.5 terrain data.
+// Resort Explore v0.6 terrain data.
 // Coordinates: x = east/west, z = north/south, y = height.
-// Goal: Wuhu-style layout from public map analysis, but implemented with original procedural geometry.
-// Key corrections vs v0.4:
-// - coastline uses polygon-distance falloff, so the outline no longer collapses into a round island
-// - stronger NE volcano, central lake basin, west wind/lighthouse side, south town, and long SE sandbar
+// v0.6 priority: coastline + relief first.
+// The outline below is reference-traced from the user-provided blue Wuhu Island map image,
+// then converted into the local Three.js coordinate system. It is an authored approximation
+// for a fan/prototype map, not extracted official geometry.
 
 export const WORLD_BOUNDS = {
-  minX: -390,
-  maxX: 420,
-  minZ: -380,
-  maxZ: 360
+  minX: -430,
+  maxX: 430,
+  minZ: -390,
+  maxZ: 380
 };
 
-// Main island outline, traced as a playable low-poly approximation.
-// Shape notes:
-// - west side has a triangular cape and rugged rocks
-// - north side has a raised mountain/volcano mass
-// - south side contains the town and wide white beach
-// - east/south-east stretches into a long sandy peninsula
+// Main island outline. This replaces the earlier round/ellipse-like outline.
+// Shape targets:
+// - sharp west cape
+// - north/northwest volcano mass
+// - central waist and lake basin
+// - large curved east/southeast arm
+// - long southern beach belt
 export const islandOutline = [
-  { x: -320, z:  18 },
-  { x: -305, z:  82 },
-  { x: -270, z: 126 },
-  { x: -232, z: 182 },
-  { x: -168, z: 224 },
-  { x:  -92, z: 242 },
-  { x:  -18, z: 222 },
-  { x:   44, z: 246 },
-  { x:  118, z: 230 },
-  { x:  176, z: 196 },
-  { x:  222, z: 144 },
-  { x:  248, z:  82 },
-  { x:  236, z:  26 },
-  { x:  266, z: -26 },
-  { x:  330, z: -72 },
-  { x:  386, z:-132 },
-  { x:  398, z:-202 },
-  { x:  360, z:-262 },
-  { x:  292, z:-302 },
-  { x:  206, z:-318 },
-  { x:  118, z:-306 },
-  { x:   34, z:-286 },
-  { x:  -48, z:-270 },
-  { x: -124, z:-236 },
-  { x: -174, z:-192 },
-  { x: -220, z:-138 },
-  { x: -278, z:-106 },
-  { x: -344, z: -58 },
-  { x: -366, z:  -8 }
+  { x: -206, z: 248 },
+  { x: -229, z: 202 },
+  { x: -226, z: 110 },
+  { x: -249, z:  74 },
+  { x: -318, z:  32 },
+  { x: -342, z:  -9 },
+  { x: -246, z:  20 },
+  { x: -226, z:   1 },
+  { x: -229, z: -25 },
+  { x: -187, z: -25 },
+  { x: -160, z: -78 },
+  { x:  -97, z: -99 },
+  { x:  -93, z:-113 },
+  { x:  -67, z:-112 },
+  { x:  -57, z: -65 },
+  { x:  -12, z: -62 },
+  { x:    6, z: -83 },
+  { x:   25, z: -57 },
+  { x:   87, z: -68 },
+  { x:  165, z: -58 },
+  { x:  226, z:-161 },
+  { x:  191, z:-228 },
+  { x:  152, z:-238 },
+  { x:  146, z:-286 },
+  { x:  107, z:-323 },
+  { x:  136, z:-341 },
+  { x:  229, z:-332 },
+  { x:  289, z:-300 },
+  { x:  336, z:-203 },
+  { x:  338, z:-132 },
+  { x:  287, z: -30 },
+  { x:  215, z:  38 },
+  { x:  177, z: 149 },
+  { x:  119, z: 167 },
+  { x:   97, z: 188 },
+  { x:  103, z: 248 },
+  { x:   39, z: 260 },
+  { x:   39, z: 331 },
+  { x:   12, z: 341 },
+  { x:  -57, z: 304 },
+  { x:  -72, z: 248 },
+  { x: -170, z: 258 }
 ];
 
-// Separate land masses used for Wedge-like island, rock stacks, and small reefs.
+// Secondary land masses from the reference map.
+// Wedge Island is southwest of the main island, not southeast.
 export const secondaryIslands = [
-  { id: 'wedge_island', x: 314, z: -286, radiusX: 70, radiusZ: 46, height: 14, type: 'sand_grass' },
-  { id: 'small_south_islet', x: 112, z: -348, radiusX: 26, radiusZ: 16, height: 7, type: 'sand' },
-  { id: 'north_rock', x: -214, z: 292, radiusX: 25, radiusZ: 16, height: 20, type: 'rock' },
-  { id: 'west_rocks', x: -340, z: 6, radiusX: 22, radiusZ: 13, height: 10, type: 'rock' },
-  { id: 'east_reef', x: 368, z: 20, radiusX: 20, radiusZ: 11, height: 8, type: 'rock' }
+  { id: 'wedge_island', x: -327, z: -292, radiusX: 92, radiusZ: 72, height: 16, type: 'sand_grass' },
+  { id: 'private_islet', x: -378, z: 277, radiusX: 32, radiusZ: 44, height: 10, type: 'grass' },
+  { id: 'north_reef_chain', x: -160, z: 356, radiusX: 66, radiusZ: 16, height: 9, type: 'rock' },
+  { id: 'northwest_rock', x: -274, z: 355, radiusX: 24, radiusZ: 18, height: 10, type: 'rock' },
+  { id: 'inner_south_reef', x: -150, z: -261, radiusX: 34, radiusZ: 16, height: 7, type: 'sand' },
+  { id: 'west_sea_rocks', x: -408, z: -12, radiusX: 20, radiusZ: 12, height: 9, type: 'rock' },
+  { id: 'east_reef', x: 354, z: 6, radiusX: 22, radiusZ: 12, height: 7, type: 'rock' }
 ];
 
 export const zones = {
-  // Main geography. Volcano is north-east/center-right; lake is central-lower; town/beach are south.
-  volcano: { x: 88, z: 146, radiusX: 128, radiusZ: 114, height: 150 },
-  volcanoShoulder: { x: 34, z: 118, radiusX: 170, radiusZ: 104, height: 44 },
-  crater: { x: 96, z: 154, radius: 29 },
-  lavaTube: { x: 32, z: 118, radius: 25 },
+  // Large conical mountain read from the aerial references: north / north-west side.
+  volcano: { x: -148, z: 214, radiusX: 118, radiusZ: 126, height: 188 },
+  volcanoShoulder: { x: -126, z: 162, radiusX: 186, radiusZ: 164, height: 58 },
+  crater: { x: -150, z: 262, radius: 25 },
+  lavaTube: { x: -82, z: 156, radius: 28 },
 
-  lake: { x: -44, z: 22, radiusX: 82, radiusZ: 54 },
-  upperLake: { x: -76, z: 112, radiusX: 44, radiusZ: 24 },
-  river: { points: [{ x: -76, z: 110 }, { x: -60, z: 82 }, { x: -48, z: 52 }, { x: -44, z: 22 }], width: 12 },
+  // Central water system: upper pond -> falls -> main lake.
+  lake: { x: -42, z: 42, radiusX: 78, radiusZ: 55 },
+  upperLake: { x: -142, z: 142, radiusX: 38, radiusZ: 24 },
+  river: {
+    points: [
+      { x: -142, z: 142 },
+      { x: -126, z: 112 },
+      { x: -96, z: 86 },
+      { x: -64, z: 62 },
+      { x: -42, z: 42 }
+    ],
+    width: 10
+  },
 
-  town: { x: -76, z: -176, radiusX: 88, radiusZ: 68 },
-  plaza: { x: -62, z: -166, radius: 28 },
-  marina: { x: -114, z: -244, radius: 54 },
-  beach: { x: 34, z: -268, radiusX: 246, radiusZ: 58 },
-  southEastBeach: { x: 270, z: -250, radiusX: 132, radiusZ: 52 },
-  sandbarNeck: { x: 204, z: -212, radiusX: 104, radiusZ: 36 },
+  // Town / beach / marina are south-west to south.
+  town: { x: -108, z: -152, radiusX: 78, radiusZ: 62 },
+  plaza: { x: -92, z: -144, radius: 26 },
+  marina: { x: -148, z: -212, radius: 58 },
+  beach: { x: 6, z: -244, radiusX: 232, radiusZ: 52 },
+  southEastBeach: { x: 240, z: -236, radiusX: 110, radiusZ: 68 },
+  sandbarNeck: { x: 214, z: -146, radiusX: 116, radiusZ: 42 },
 
-  windHill: { x: -230, z: 82, radiusX: 88, radiusZ: 92 },
-  lighthouseCape: { x: -292, z: -56, radius: 54 },
-  westCape: { x: -318, z: -20, radius: 70 },
-  ruins: { x: -92, z: 154, radius: 48 },
-  mountainCabins: { x: -132, z: 210, radius: 54 },
-  eastForest: { x: 178, z: -14, radius: 92 },
-  northForest: { x: -32, z: 142, radius: 82 },
-  archRock: { x: 250, z: 28, radius: 38 },
-  golfIsland: { x: 314, z: -286, radius: 56 }
+  // Western side landmarks from reference: lighthouse + wind turbines.
+  windHill: { x: -272, z: -58, radiusX: 92, radiusZ: 104 },
+  lighthouseCape: { x: -326, z: -86, radius: 48 },
+  westCape: { x: -330, z: 0, radius: 62 },
+
+  // Higher ground / forests / featured rock areas.
+  ruins: { x: 84, z: 138, radius: 50 },
+  mountainCabins: { x: -198, z: 230, radius: 56 },
+  eastForest: { x: 146, z: 8, radius: 92 },
+  northForest: { x: -70, z: 134, radius: 92 },
+  archRock: { x: -286, z: 44, radius: 42 },
+  golfIsland: { x: -327, z: -292, radius: 56 }
 };
 
-// Roads / paths. These are visual strips and design guides.
 export const pathRoutes = [
   {
     id: 'town_to_lake',
@@ -96,7 +126,7 @@ export const pathRoutes = [
     width: 7,
     color: 0xdcc98d,
     points: [
-      { x: -72, z: -174 }, { x: -66, z: -128 }, { x: -58, z: -72 }, { x: -48, z: -18 }
+      { x: -108, z: -152 }, { x: -98, z: -112 }, { x: -76, z: -68 }, { x: -58, z: -10 }, { x: -42, z: 42 }
     ]
   },
   {
@@ -105,25 +135,7 @@ export const pathRoutes = [
     width: 5,
     color: 0xe8d79a,
     points: [
-      { x: -120, z: 16 }, { x: -96, z: 76 }, { x: -34, z: 104 }, { x: 38, z: 70 }, { x: 48, z: 4 }, { x: 2, z: -36 }, { x: -72, z: -32 }, { x: -120, z: 16 }
-    ]
-  },
-  {
-    id: 'wind_to_ruins',
-    name: '西の丘から遺跡への道',
-    width: 5,
-    color: 0xd7c286,
-    points: [
-      { x: -246, z: 74 }, { x: -202, z: 112 }, { x: -154, z: 138 }, { x: -94, z: 154 }
-    ]
-  },
-  {
-    id: 'coastal_beach_path',
-    name: '海岸遊歩道',
-    width: 6,
-    color: 0xeadba6,
-    points: [
-      { x: -196, z: -180 }, { x: -132, z: -222 }, { x: -34, z: -254 }, { x: 82, z: -268 }, { x: 198, z: -260 }, { x: 300, z: -250 }
+      { x: -124, z: 36 }, { x: -98, z: 90 }, { x: -40, z: 110 }, { x: 30, z: 76 }, { x: 46, z: 20 }, { x: 8, z: -20 }, { x: -62, z: -18 }, { x: -124, z: 36 }
     ]
   },
   {
@@ -132,42 +144,67 @@ export const pathRoutes = [
     width: 5,
     color: 0xbfae7d,
     points: [
-      { x: -10, z: 92 }, { x: 30, z: 120 }, { x: 62, z: 142 }, { x: 94, z: 154 }
+      { x: -70, z: 82 }, { x: -98, z: 126 }, { x: -124, z: 172 }, { x: -150, z: 230 }
+    ]
+  },
+  {
+    id: 'wind_lighthouse_path',
+    name: '灯台と風車の道',
+    width: 5,
+    color: 0xd7c286,
+    points: [
+      { x: -316, z: -92 }, { x: -296, z: -46 }, { x: -278, z: -2 }, { x: -250, z: 36 }, { x: -210, z: 78 }
+    ]
+  },
+  {
+    id: 'coastal_beach_path',
+    name: '南岸の海岸道',
+    width: 6,
+    color: 0xeadba6,
+    points: [
+      { x: -180, z: -202 }, { x: -112, z: -230 }, { x: -18, z: -246 }, { x: 78, z: -252 }, { x: 160, z: -238 }, { x: 238, z: -214 }, { x: 292, z: -168 }
+    ]
+  },
+  {
+    id: 'east_arm_path',
+    name: '東の岬道',
+    width: 5,
+    color: 0xd9c88f,
+    points: [
+      { x: 58, z: -42 }, { x: 130, z: -50 }, { x: 196, z: -78 }, { x: 248, z: -126 }, { x: 292, z: -190 }
     ]
   }
 ];
 
 export const landmarks = [
-  { id: 'resort_town', name: 'リゾートタウン', area: 'town', x: -76, y: 8, z: -176, radius: 30, description: '南側に広がるリゾートの中心地。広場・住宅・桟橋が集まる。' },
-  { id: 'central_plaza', name: '中央広場', area: 'town', x: -62, y: 8, z: -166, radius: 22, description: '町の中心にある円形広場。噴水と周回路を置く基準点。' },
-  { id: 'marina', name: 'マリーナ', area: 'town', x: -114, y: 5, z: -244, radius: 26, description: '海に面した小さな港。桟橋・ボート・リングの発着点。' },
-  { id: 'white_beach', name: '白砂ビーチ', area: 'beach', x: 26, y: 4, z: -268, radius: 36, description: '南岸の長い白砂。低空飛行の練習に向く。' },
-  { id: 'south_east_spit', name: '南東の砂州', area: 'beach', x: 282, y: 5, z: -252, radius: 34, description: '南東に伸びる細長い砂州。島の輪郭を特徴づける場所。' },
-  { id: 'sunset_point', name: 'サンセット岬', area: 'beach', x: -222, y: 14, z: -142, radius: 24, description: '西の海に向いた岬。夕方モードの目印になる場所。' },
-  { id: 'duckling_lake', name: '中央湖', area: 'lake', x: -44, y: 9, z: 22, radius: 36, description: '島中央の湖。周囲の山から水が流れ込む。' },
-  { id: 'upper_lake', name: '上流の池', area: 'lake', x: -76, y: 26, z: 112, radius: 24, description: '中央湖へ水を送る高地の池。滝の起点。' },
-  { id: 'lake_falls', name: '湖の滝', area: 'lake', x: -60, y: 22, z: 82, radius: 22, description: '高地から中央湖に落ちる滝。水しぶき演出を追加予定。' },
-  { id: 'red_bridge', name: '赤い橋', area: 'lake', x: -54, y: 12, z: -10, radius: 18, description: '湖の南側にかかる赤い橋。リングコースの基準点。' },
-  { id: 'maka_peak', name: '火山山頂', area: 'volcano', x: 96, y: 130, z: 154, radius: 32, description: '島で最も高い火山の山頂。全景を見渡せる。' },
-  { id: 'crater', name: '火口', area: 'volcano', x: 96, y: 128, z: 154, radius: 18, description: '火山の中心にある火口。煙・赤熱表現を追加する。' },
-  { id: 'lava_tube', name: '溶岩洞入口', area: 'volcano', x: 32, y: 58, z: 118, radius: 22, description: '火山の側面にある洞窟入口。上級リングコースの入口候補。' },
-  { id: 'wind_hill', name: '風車の丘', area: 'wind', x: -230, y: 38, z: 82, radius: 30, description: '西側の丘に並ぶ風車群。上昇気流ギミックを追加予定。' },
-  { id: 'west_overlook', name: '西の展望台', area: 'wind', x: -270, y: 42, z: 62, radius: 22, description: '風車の丘の端にある展望台。西海岸を一望できる。' },
-  { id: 'lighthouse', name: '灯台', area: 'cape', x: -292, y: 24, z: -56, radius: 26, description: '西南の岬に立つ灯台。遠距離からでも目印になる。' },
-  { id: 'cliff_cave', name: '海食洞', area: 'cape', x: -300, y: 12, z: -8, radius: 22, description: '崖下に開いた海食洞。狭い飛行ルートの候補。' },
-  { id: 'ancient_ruins', name: '古代遺跡', area: 'ruins', x: -92, y: 30, z: 154, radius: 30, description: '北寄りの高台にある古代遺跡。石柱と門を追加予定。' },
-  { id: 'forest_monument', name: '森の記念碑', area: 'forest', x: -32, y: 26, z: 142, radius: 22, description: '森の奥に立つ記念碑。木の密度で隠し要素にする。' },
-  { id: 'mountain_cabins', name: '山荘エリア', area: 'mountain', x: -132, y: 54, z: 210, radius: 26, description: '北側斜面の山荘。高所の休憩地点。' },
-  { id: 'arch_rock', name: '岩のアーチ', area: 'coast', x: 250, y: 24, z: 28, radius: 26, description: '東海岸にある自然の岩門。リングを通すと映える。' },
-  { id: 'wedge_island', name: '離島', area: 'island', x: 314, y: 8, z: -286, radius: 30, description: '本島の南東に浮かぶ小島。探索報酬を置く場所。' },
-  { id: 'training_rings', name: 'リング訓練場', area: 'beach', x: -86, y: 20, z: -238, radius: 24, description: '初心者用のリング練習場。' },
-  { id: 'east_forest', name: '東の森', area: 'forest', x: 172, y: 18, z: -18, radius: 26, description: '東側に広がる森。低空探索でランドマークが見つかる。' },
-  { id: 'coastal_road', name: '海岸遊歩道', area: 'beach', x: 132, y: 8, z: -262, radius: 24, description: '南の白砂沿いに続く道。島一周コースの導線。' },
-  { id: 'north_rock', name: '北の岩礁', area: 'coast', x: -214, y: 14, z: 292, radius: 18, description: '北の海に浮かぶ小さな岩礁。遠景の目印。' },
-  { id: 'west_rocks', name: '西の岩場', area: 'coast', x: -340, y: 10, z: 6, radius: 18, description: '西側の荒い海岸線。岩場と海食洞につながる。' },
-  { id: 'sandbar_neck', name: '砂州のくびれ', area: 'beach', x: 204, y: 6, z: -212, radius: 22, description: '本島から南東砂州へつながる細い低地。' },
-  { id: 'volcano_shoulder', name: '火山中腹', area: 'volcano', x: 34, y: 62, z: 118, radius: 26, description: '火山へ登る途中の斜面。湖と山頂の中間地点。' },
-  { id: 'east_reef', name: '東の岩礁', area: 'coast', x: 368, y: 10, z: 20, radius: 16, description: '東の海上に浮かぶ小岩。外周ルートの目印。' }
+  { id: 'resort_town', name: 'リゾートタウン', area: 'town', x: -108, y: 8, z: -152, radius: 30, description: '南側に広がるリゾートの中心地。広場・住宅・桟橋が集まる。' },
+  { id: 'central_plaza', name: '中央広場', area: 'town', x: -92, y: 8, z: -144, radius: 22, description: '町の中心にある広場。道と海岸の導線が交差する。' },
+  { id: 'marina', name: 'マリーナ', area: 'town', x: -148, y: 5, z: -212, radius: 26, description: '町の南西にある港。桟橋・船・発着点を置く基準。' },
+  { id: 'white_beach', name: '白砂ビーチ', area: 'beach', x: 0, y: 4, z: -244, radius: 36, description: '南岸の長い白砂。低空飛行とリング練習に向く。' },
+  { id: 'east_sand_arm', name: '東の砂浜アーム', area: 'beach', x: 240, y: 5, z: -236, radius: 34, description: '東から南東へ回り込む長い海岸線。島の輪郭を決める場所。' },
+  { id: 'sandbar_neck', name: '砂州のくびれ', area: 'beach', x: 214, y: 6, z: -146, radius: 22, description: '本島から東のアームへつながる細い低地。' },
+  { id: 'duckling_lake', name: '中央湖', area: 'lake', x: -42, y: 9, z: 42, radius: 36, description: '島中央の湖。火山の斜面から水が流れ込む。' },
+  { id: 'upper_lake', name: '上流の池', area: 'lake', x: -142, y: 26, z: 142, radius: 24, description: '火山の麓にある高地の池。滝の起点。' },
+  { id: 'lake_falls', name: '湖の滝', area: 'lake', x: -96, y: 22, z: 86, radius: 22, description: '高地から中央湖に落ちる滝。' },
+  { id: 'red_bridge', name: '赤い橋', area: 'lake', x: -56, y: 12, z: -6, radius: 18, description: '湖の南側にかかる橋。' },
+  { id: 'maka_peak', name: '火山山頂', area: 'volcano', x: -150, y: 150, z: 248, radius: 32, description: '島で最も高い火山の山頂。全景を見渡せる。' },
+  { id: 'crater', name: '火口', area: 'volcano', x: -150, y: 148, z: 262, radius: 18, description: '火山の中心にある火口。' },
+  { id: 'lava_tube', name: '溶岩洞入口', area: 'volcano', x: -82, y: 58, z: 156, radius: 22, description: '火山の側面にある洞窟入口。' },
+  { id: 'wind_hill', name: '風車の丘', area: 'wind', x: -272, y: 38, z: -58, radius: 30, description: '西側の丘に並ぶ風車群。' },
+  { id: 'lighthouse', name: '灯台', area: 'cape', x: -326, y: 24, z: -86, radius: 26, description: '西南の岬に立つ灯台。遠距離からでも目印になる。' },
+  { id: 'west_cape', name: '西の岬', area: 'cape', x: -330, y: 18, z: 0, radius: 24, description: '島の西に突き出した岩場の岬。' },
+  { id: 'arch_rock', name: 'イカロスの崖', area: 'coast', x: -286, y: 24, z: 44, radius: 26, description: '西側の崖にある自然地形。' },
+  { id: 'ancient_ruins', name: '古代遺跡', area: 'ruins', x: 84, y: 30, z: 138, radius: 30, description: '火山東側の高台にある遺跡。' },
+  { id: 'forest_monument', name: '森の記念碑', area: 'forest', x: -70, y: 26, z: 134, radius: 22, description: '森の奥にある記念碑。' },
+  { id: 'mountain_cabins', name: '山荘エリア', area: 'mountain', x: -198, y: 54, z: 230, radius: 26, description: '北側斜面の山荘。' },
+  { id: 'east_forest', name: '東の森', area: 'forest', x: 146, y: 18, z: 8, radius: 26, description: '東側の丘に広がる森。' },
+  { id: 'east_arm', name: '東の半島', area: 'coast', x: 260, y: 18, z: -120, radius: 28, description: '本家マップで特徴的な東へ回り込む半島。' },
+  { id: 'wedge_island', name: 'ウェッジ島', area: 'island', x: -327, y: 8, z: -292, radius: 38, description: '本島の南西に浮かぶ大きな離島。' },
+  { id: 'private_islet', name: '北西の小島', area: 'island', x: -378, y: 8, z: 277, radius: 24, description: '北西沖にある小さな島。' },
+  { id: 'north_reef_chain', name: '北の岩礁群', area: 'coast', x: -160, y: 10, z: 356, radius: 22, description: '北の海に浮かぶ細い岩礁。' },
+  { id: 'training_rings', name: 'リング訓練場', area: 'beach', x: -82, y: 20, z: -228, radius: 24, description: '初心者用のリング練習場。' },
+  { id: 'coastal_road', name: '海岸遊歩道', area: 'beach', x: 120, y: 8, z: -238, radius: 24, description: '南岸から東の半島へ続く道。' },
+  { id: 'volcano_shoulder', name: '火山中腹', area: 'volcano', x: -108, y: 62, z: 172, radius: 26, description: '火山へ登る途中の広い斜面。' }
 ];
 
 export const ringCourses = [
@@ -176,12 +213,12 @@ export const ringCourses = [
     name: 'ビーチ練習コース',
     description: '白砂ビーチ沿いの低空リング。操作確認用。',
     rings: [
-      { x: -150, y: 24, z: -224 },
-      { x: -96, y: 26, z: -246 },
-      { x: -30, y: 28, z: -264 },
-      { x: 46, y: 29, z: -268 },
-      { x: 128, y: 31, z: -260 },
-      { x: 222, y: 34, z: -246 }
+      { x: -158, y: 24, z: -212 },
+      { x: -100, y: 26, z: -232 },
+      { x: -28, y: 28, z: -246 },
+      { x: 56, y: 29, z: -248 },
+      { x: 142, y: 31, z: -236 },
+      { x: 230, y: 34, z: -204 }
     ]
   },
   {
@@ -189,12 +226,12 @@ export const ringCourses = [
     name: '湖一周コース',
     description: '中央湖の周囲を回るリング。',
     rings: [
-      { x: -112, y: 34, z: 14 },
-      { x: -92, y: 42, z: 76 },
-      { x: -24, y: 44, z: 100 },
-      { x: 48, y: 40, z: 54 },
-      { x: 42, y: 35, z: -16 },
-      { x: -26, y: 32, z: -42 }
+      { x: -118, y: 34, z: 36 },
+      { x: -96, y: 42, z: 88 },
+      { x: -34, y: 44, z: 104 },
+      { x: 40, y: 40, z: 62 },
+      { x: 42, y: 35, z: -4 },
+      { x: -28, y: 32, z: -30 }
     ]
   },
   {
@@ -202,10 +239,10 @@ export const ringCourses = [
     name: '火山登山コース',
     description: '湖畔から火山側面を登る中級コース。',
     rings: [
-      { x: 20, y: 54, z: 72 },
-      { x: 42, y: 76, z: 108 },
-      { x: 68, y: 104, z: 134 },
-      { x: 96, y: 136, z: 154 }
+      { x: -78, y: 54, z: 96 },
+      { x: -104, y: 82, z: 142 },
+      { x: -126, y: 116, z: 190 },
+      { x: -150, y: 156, z: 246 }
     ]
   }
 ];

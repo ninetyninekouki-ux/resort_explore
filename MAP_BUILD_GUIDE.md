@@ -1,108 +1,60 @@
-# MAP BUILD GUIDE v0.5
+# MAP BUILD GUIDE v0.6
 
-## 方針
+## v0.6の基準
 
-ウーフーアイランド風の再現で最初に重要なのは、建物や木の数ではなく、空から見たときの「輪郭」と「起伏」です。v0.5ではこの2つを優先して修正しています。
+今回の地形は、ユーザー提供の参照画像のうち、3枚目のシルエットマップを最優先にした。4〜6枚目の俯瞰画像は起伏・標高・ランドマーク配置の参考にした。
 
-## 実装方針
+## 主要ファイル
 
-### 1. 島の輪郭
+```text
+data/islandData.js   # 輪郭・エリア・ランドマーク・リング
+src/main.js          # 地形生成・描画・操作・ミニマップ
+```
 
-`data/islandData.js` の `islandOutline` を島の唯一の基準線として使います。
+## 輪郭の修正場所
 
 ```js
 export const islandOutline = [
-  { x: -320, z: 18 },
+  { x: -206, z: 248 },
   ...
 ];
 ```
 
-`src/main.js` では、各地形頂点からこの輪郭までの距離を計算します。
+v0.6ではこの配列が島の実形状の基準になる。`src/main.js` 側では、各地形頂点からこのポリゴン外周までの距離を計算して海岸線を作る。
+
+## 起伏の修正場所
 
 ```js
-function mainIslandFactor(x, z) {
-  if (!pointInPolygon(x, z, islandOutline)) return 0;
-  const shore = distanceToPolygonEdge(x, z, islandOutline);
-  return smoothstep(0, 42, shore);
-}
+export const zones = {
+  volcano,
+  volcanoShoulder,
+  lake,
+  upperLake,
+  river,
+  town,
+  beach,
+  windHill,
+  lighthouseCape
+};
 ```
 
-これにより、島の外形が円ではなくポリゴン輪郭に従います。
+`src/main.js` の `heightAt(x, z)` が実際の標高を作る。
 
-### 2. 地形の高さ
-
-地形の高さは `heightAt(x, z)` に集約します。
-
-優先順位：
+優先順位は以下。
 
 ```text
-海か陸か
-↓
-海岸線からの距離
-↓
-火山・丘・山荘エリアの盛り上げ
-↓
-湖・池・川の削り込み
-↓
-砂浜・町・港の平坦化
+1. islandOutline内かどうか
+2. 海岸からの距離で海岸線を落とす
+3. 火山・山腹を盛る
+4. 湖・川を削る
+5. 町・港・砂浜を平坦化
+6. 森・風車丘・灯台岬を盛る
 ```
 
-### 3. 地形エリア
+## 次に改善する場合
 
-`zones` は地形加工のための制御点です。
-
-```js
-zones.volcano
-zones.volcanoShoulder
-zones.lake
-zones.upperLake
-zones.town
-zones.beach
-zones.southEastBeach
-zones.windHill
-zones.lighthouseCape
-```
-
-## 次に調整する場所
-
-### 島がまだ丸い場合
-
-`mainIslandFactor()` の shore幅を狭めます。
-
-```js
-return smoothstep(0, 42, shore);
-```
-
-42を小さくすると海岸線が急になります。大きくするとなだらかになります。
-
-### 海岸が角張る場合
-
-`createTerrain()` の `segments` を増やします。
-
-```js
-const segments = 232;
-```
-
-### 火山をもっと大きくする場合
-
-```js
-volcano: { x: 88, z: 146, radiusX: 128, radiusZ: 114, height: 150 }
-```
-
-`height` を上げると山が高くなります。`radiusX/radiusZ` を上げると山体が広くなります。
-
-### 砂州を細くする場合
-
-```js
-southEastBeach: { x: 270, z: -250, radiusX: 132, radiusZ: 52 }
-```
-
-`radiusZ` を小さくすると細くなります。
-
-## v0.6でやるべきこと
-
-1. 公式マップ風に、北西側の小湖と西の湾を追加
-2. 火山の火口・洞窟入口をモデルとして追加
-3. 南の町に道路網、ホテル、港、灯台側へ向かう道を追加
-4. 湖の滝を透明な水メッシュで表示
-5. 砂浜の浅瀬・波打ち際を追加
+1. 火山の縦筋・岩肌を追加
+2. 町のホテル・広場・道を追加
+3. 斜面に段々畑状のラインを追加
+4. 西側の断崖をさらに高くする
+5. 浅瀬の色を濃淡で分ける
