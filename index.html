@@ -1,59 +1,43 @@
 <!doctype html>
 <html lang="ja">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Resort Explore Prototype</title>
-  <link rel="stylesheet" href="./src/styles.css" />
-</head>
-<body>
-  <div id="app">
-    <canvas id="game"></canvas>
-
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Resort Explore - Wuhu-style Island Prototype</title>
+    <link rel="stylesheet" href="./src/styles.css" />
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://unpkg.com/three@0.164.1/build/three.module.js"
+        }
+      }
+    </script>
+  </head>
+  <body>
     <div id="hud">
-      <div class="title">RESORT EXPLORE</div>
-      <div class="metrics">
-        <div>速度 <span id="speed">0</span></div>
-        <div>高度 <span id="altitude">0</span></div>
-        <div>発見 <span id="found">0/0</span></div>
-      </div>
-      <div class="fuel-wrap">
-        <span>FUEL</span>
-        <div class="fuel"><div id="fuelBar"></div></div>
+      <div class="hud-card title">RESORT EXPLORE v0.3</div>
+      <div class="hud-card">高度 <span id="altitude">0</span>m</div>
+      <div class="hud-card">速度 <span id="speed">0</span></div>
+      <div class="hud-card">発見 <span id="discovered">0</span>/<span id="totalLandmarks">0</span></div>
+      <div class="hud-card hint">WASD 移動 / Space 上昇 / Shift 下降 / マウス 視点</div>
+    </div>
+
+    <div id="minimapWrap">
+      <canvas id="minimap" width="220" height="220"></canvas>
+      <div class="mini-label">MINI MAP</div>
+    </div>
+
+    <div id="message" class="message hidden"></div>
+
+    <div id="startOverlay">
+      <div class="start-panel">
+        <h1>Resort Explore</h1>
+        <p>ウーフーアイランド風のリゾート島をジェットパックで探索するプロトタイプです。</p>
+        <p class="small">クリックで開始。A/Dは左右、ブーストは常時ON、無操作時は自由落下します。</p>
+        <button id="startButton">START</button>
       </div>
     </div>
 
-    <canvas id="minimap" width="180" height="180"></canvas>
-
-    <div id="message" class="hidden"></div>
-
-    <div id="startPanel">
-      <h1>Resort Explore</h1>
-      <p>島をジェットパックで探索するブラウザ版プロトタイプです。</p>
-      <p class="small">クリックまたはタップで開始</p>
-      <div class="keys">
-        <div><b>W/A/S/D</b> 移動</div>
-        <div><b>Space</b> 上昇</div>
-        <div><b>Shift</b> 下降</div>
-        <div><b>Boost</b> 常時ON</div>
-        <div><b>Mouse</b> 視点操作</div>
-      </div>
-    </div>
-
-    <div id="mobileControls" aria-label="mobile controls">
-      <button data-key="w">▲</button>
-      <div class="row">
-        <button data-key="a">◀</button>
-        <button data-key="s">▼</button>
-        <button data-key="d">▶</button>
-      </div>
-      <div class="row right">
-        <button data-key="space">上昇</button>
-        <button data-key="shift">下降</button>
-      </div>
-    </div>
-  </div>
-
-  <script type="module" src="./src/main.js"></script>
-</body>
+    <script type="module" src="./src/main.js"></script>
+  </body>
 </html>

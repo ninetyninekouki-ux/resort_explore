@@ -1,590 +1,631 @@
-import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
-import { LANDMARKS, RINGS } from '../data/landmarks.js';
+import * as THREE from 'three';
+import { WORLD_BOUNDS, islandOutline, zones, landmarks, ringCourses } from '../data/islandData.js';
 
-const canvas = document.getElementById('game');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+const canvasHost = document.body;
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x86c9ff);
+scene.fog = new THREE.Fog(0x86c9ff, 260, 760);
+
+const camera = new THREE.PerspectiveCamera(64, window.innerWidth / window.innerHeight, 0.1, 1800);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+canvasHost.appendChild(renderer.domElement);
 
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x78c7ff);
-scene.fog = new THREE.Fog(0x78c7ff, 170, 520);
+// UI
+const altitudeEl = document.getElementById('altitude');
+const speedEl = document.getElementById('speed');
+const discoveredEl = document.getElementById('discovered');
+const totalLandmarksEl = document.getElementById('totalLandmarks');
+const messageEl = document.getElementById('message');
+const startOverlay = document.getElementById('startOverlay');
+const startButton = document.getElementById('startButton');
+const minimapCanvas = document.getElementById('minimap');
+const mini = minimapCanvas.getContext('2d');
 
-const camera = new THREE.PerspectiveCamera(68, window.innerWidth / window.innerHeight, 0.1, 1200);
-
-const hemi = new THREE.HemisphereLight(0xdff5ff, 0x506842, 2.0);
+// Lights
+const hemi = new THREE.HemisphereLight(0xbfe8ff, 0x4b6b3d, 1.55);
 scene.add(hemi);
-
-const sun = new THREE.DirectionalLight(0xffffff, 2.35);
-sun.position.set(-120, 180, 90);
+const sun = new THREE.DirectionalLight(0xffffff, 2.3);
+sun.position.set(-190, 360, 120);
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
-sun.shadow.camera.left = -260;
-sun.shadow.camera.right = 260;
-sun.shadow.camera.top = 260;
-sun.shadow.camera.bottom = -260;
+sun.shadow.camera.left = -420;
+sun.shadow.camera.right = 420;
+sun.shadow.camera.top = 420;
+sun.shadow.camera.bottom = -420;
 scene.add(sun);
 
-const world = new THREE.Group();
-scene.add(world);
+// Materials
+const matWater = new THREE.MeshStandardMaterial({ color: 0x1f91d5, roughness: 0.32, metalness: 0.05, transparent: true, opacity: 0.78 });
+const matSand = new THREE.MeshStandardMaterial({ color: 0xf3df9f, roughness: 0.85 });
+const matRock = new THREE.MeshStandardMaterial({ color: 0x7a6d61, roughness: 0.92 });
+const matGrass = new THREE.MeshStandardMaterial({ color: 0x55a64b, roughness: 0.9 });
+const matTown = new THREE.MeshStandardMaterial({ color: 0xf2e6ca, roughness: 0.7 });
+const matRoof = new THREE.MeshStandardMaterial({ color: 0xd86642, roughness: 0.75 });
+const matWhite = new THREE.MeshStandardMaterial({ color: 0xf2f4f2, roughness: 0.72 });
+const matWood = new THREE.MeshStandardMaterial({ color: 0x8c5e33, roughness: 0.86 });
+const matRing = new THREE.MeshStandardMaterial({ color: 0xffd24a, emissive: 0x9a5b00, emissiveIntensity: 0.45, roughness: 0.45 });
 
-const MAP_SIZE = 360;
-const HALF = MAP_SIZE / 2;
-const keys = Object.create(null);
-const discovered = new Set(JSON.parse(localStorage.getItem('resortExploreDiscovered') || '[]'));
-let started = false;
-let messageTimer = 0;
-let ringCount = 0;
+// World groups
+const terrainGroup = new THREE.Group();
+const propGroup = new THREE.Group();
+const landmarkGroup = new THREE.Group();
+const ringGroup = new THREE.Group();
+scene.add(terrainGroup, propGroup, landmarkGroup, ringGroup);
 
-const ui = {
-  speed: document.getElementById('speed'),
-  altitude: document.getElementById('altitude'),
-  found: document.getElementById('found'),
-  fuelBar: document.getElementById('fuelBar'),
-  message: document.getElementById('message'),
-  startPanel: document.getElementById('startPanel'),
-  minimap: document.getElementById('minimap'),
-};
-const mapCtx = ui.minimap.getContext('2d');
-
-const player = {
-  position: new THREE.Vector3(-70, 24, 104),
-  velocity: new THREE.Vector3(0, 0, 0),
-  yaw: -0.25,
-  pitch: -0.08,
-  fuel: 100,
-  maxFuel: 100,
-};
-
-function clamp(value, min, max) {
-  return Math.max(min, Math.min(max, value));
-}
-
+function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
 function smoothstep(edge0, edge1, x) {
   const t = clamp((x - edge0) / (edge1 - edge0), 0, 1);
   return t * t * (3 - 2 * t);
 }
-
-function gaussian(x, z, cx, cz, sx, sz, height) {
-  const dx = (x - cx) / sx;
-  const dz = (z - cz) / sz;
-  return height * Math.exp(-(dx * dx + dz * dz));
+function distance2(x, z, cx, cz) {
+  const dx = x - cx; const dz = z - cz;
+  return Math.sqrt(dx * dx + dz * dz);
+}
+function ellipseDistance(x, z, cx, cz, rx, rz) {
+  const dx = (x - cx) / rx; const dz = (z - cz) / rz;
+  return Math.sqrt(dx * dx + dz * dz);
+}
+function pointInPolygon(x, z, poly) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const xi = poly[i].x, zi = poly[i].z;
+    const xj = poly[j].x, zj = poly[j].z;
+    const intersect = ((zi > z) !== (zj > z)) && (x < (xj - xi) * (z - zi) / (zj - zi + 0.00001) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
 }
 
-function mainIslandMask(x, z) {
-  // Composite ellipses to roughly match a resort-island silhouette.
-  const e1 = Math.hypot((x + 20) / 125, (z - 10) / 112);
-  const e2 = Math.hypot((x - 62) / 92, (z + 42) / 92);
-  const e3 = Math.hypot((x + 93) / 60, (z - 18) / 70);
-  const e4 = Math.hypot((x - 40) / 58, (z - 92) / 45);
-  const e5 = Math.hypot((x + 55) / 58, (z + 102) / 48);
-  const m = Math.min(e1, e2, e3, e4, e5);
-  return 1 - smoothstep(0.92, 1.08, m);
+function edgeFalloff(x, z) {
+  // Estimate distance to island center and modulate by outline membership.
+  const radial = Math.sqrt((x / 280) ** 2 + (z / 270) ** 2);
+  let f = 1 - smoothstep(0.72, 1.08, radial);
+  if (!pointInPolygon(x, z, islandOutline)) f *= 0.12;
+  return clamp(f, 0, 1);
 }
 
-function smallIslandMask(x, z) {
-  const e = Math.hypot((x - 140) / 48, (z - 142) / 54);
-  return 1 - smoothstep(0.88, 1.08, e);
+function noise2(x, z) {
+  return (
+    Math.sin(x * 0.031 + z * 0.017) * 0.5 +
+    Math.sin(x * 0.064 - z * 0.021) * 0.26 +
+    Math.sin((x + z) * 0.047) * 0.18
+  );
 }
 
-function islandMask(x, z) {
-  return Math.max(mainIslandMask(x, z), smallIslandMask(x, z));
+export function heightAt(x, z) {
+  const island = edgeFalloff(x, z);
+  if (island <= 0.02) return -2;
+
+  let h = 4 + island * 10;
+  h += noise2(x, z) * 4.0 * island;
+
+  // Volcano north-east
+  const vd = distance2(x, z, zones.volcano.x, zones.volcano.z) / zones.volcano.radius;
+  const volcano = Math.max(0, 1 - vd);
+  h += Math.pow(volcano, 2.1) * zones.volcano.height;
+
+  // Crater depression
+  const cd = distance2(x, z, zones.crater.x, zones.crater.z) / zones.crater.radius;
+  if (cd < 1) h -= (1 - cd) * 30;
+
+  // Western hill
+  const wh = distance2(x, z, zones.windHill.x, zones.windHill.z) / zones.windHill.radius;
+  h += Math.max(0, 1 - wh) * 24;
+
+  // Northern cabins hill
+  const nh = distance2(x, z, -70, 190) / 80;
+  h += Math.max(0, 1 - nh) * 34;
+
+  // Lake carved down to waterline
+  const ld = ellipseDistance(x, z, zones.lake.x, zones.lake.z, zones.lake.radiusX, zones.lake.radiusZ);
+  if (ld < 1) h = Math.min(h, 5.5 - (1 - ld) * 3.2);
+
+  // Beaches flatten low and sandy
+  const bd = ellipseDistance(x, z, zones.beach.x, zones.beach.z, zones.beach.radiusX, zones.beach.radiusZ);
+  if (bd < 1.1) h = Math.min(h, 5.8 + bd * 3.5);
+
+  // Town and marina flattening
+  const td = distance2(x, z, zones.town.x, zones.town.z) / zones.town.radius;
+  if (td < 1) h = h * 0.45 + 7.2 * 0.55;
+  const md = distance2(x, z, zones.marina.x, zones.marina.z) / zones.marina.radius;
+  if (md < 1) h = h * 0.45 + 5.8 * 0.55;
+
+  return h;
 }
 
-function terrainHeight(x, z) {
-  const mask = islandMask(x, z);
-  if (mask <= 0.02) return -2;
+function terrainColorAt(x, z, y) {
+  const lakeD = ellipseDistance(x, z, zones.lake.x, zones.lake.z, zones.lake.radiusX, zones.lake.radiusZ);
+  const beachD = ellipseDistance(x, z, zones.beach.x, zones.beach.z, zones.beach.radiusX, zones.beach.radiusZ);
+  const volcanoD = distance2(x, z, zones.volcano.x, zones.volcano.z) / zones.volcano.radius;
+  const townD = distance2(x, z, zones.town.x, zones.town.z) / zones.town.radius;
 
-  let h = 2;
-  h += gaussian(x, z, 92, -75, 36, 38, 56); // volcano
-  h += gaussian(x, z, -86, -46, 42, 42, 19); // west hills
-  h += gaussian(x, z, -6, -126, 50, 34, 20); // north ridge
-  h += gaussian(x, z, 52, -12, 46, 36, 14); // central ruins ridge
-  h += gaussian(x, z, 2, 38, 30, 28, -7); // lake depression
-  h += gaussian(x, z, 5, -12, 40, 28, -7); // lake depression
-  h += gaussian(x, z, -54, 92, 44, 34, -3); // town flat
-  h += gaussian(x, z, 94, 82, 54, 30, -4); // beach flat
-  return h * mask;
-}
-
-function terrainColor(x, z, h) {
-  const mask = islandMask(x, z);
-  if (mask < 0.08) return new THREE.Color(0x158bc7);
-  const edge = mask < 0.45;
-  const lake = Math.hypot((x - 6) / 42, (z + 8) / 30) < 1 || Math.hypot((x - 2) / 24, (z - 39) / 20) < 1;
-  const beach = z > 48 && x > 20 && x < 145;
-  const town = x > -86 && x < -22 && z > 68 && z < 124;
-  const wind = x < -65 && z < -15;
-  if (lake) return new THREE.Color(0x1a8fd4);
-  if (beach || edge) return new THREE.Color(0xf4e7b3);
-  if (town) return new THREE.Color(0xd7c38f);
-  if (h > 38) return new THREE.Color(0x806a46);
-  if (h > 22) return new THREE.Color(0x9a814e);
-  if (wind) return new THREE.Color(0x6bbc4c);
-  return new THREE.Color(0x62bd4a);
+  if (lakeD < 1) return new THREE.Color(0x2e8ccb);
+  if (beachD < 1.1 || y < 7) return new THREE.Color(0xeed990);
+  if (volcanoD < 0.9 && y > 30) return new THREE.Color(0x75685d);
+  if (townD < 1.05) return new THREE.Color(0x83bb61);
+  if (y > 70) return new THREE.Color(0x6e665f);
+  if (y > 34) return new THREE.Color(0x5c964d);
+  return new THREE.Color(0x48a85a);
 }
 
 function createTerrain() {
+  const size = 640;
   const segments = 160;
-  const geometry = new THREE.PlaneGeometry(MAP_SIZE, MAP_SIZE, segments, segments);
-  const pos = geometry.attributes.position;
+  const half = size / 2;
+  const positions = [];
   const colors = [];
+  const uvs = [];
+  const indices = [];
 
-  for (let i = 0; i < pos.count; i++) {
-    const x = pos.getX(i);
-    const z = pos.getY(i);
-    const h = terrainHeight(x, z);
-    pos.setZ(i, h);
-    const c = terrainColor(x, z, h);
-    colors.push(c.r, c.g, c.b);
-  }
-
-  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-  geometry.computeVertexNormals();
-  geometry.rotateX(-Math.PI / 2);
-
-  const material = new THREE.MeshStandardMaterial({
-    vertexColors: true,
-    roughness: 0.88,
-    metalness: 0.02,
-  });
-
-  const terrain = new THREE.Mesh(geometry, material);
-  terrain.receiveShadow = true;
-  world.add(terrain);
-}
-
-function createOcean() {
-  const geometry = new THREE.PlaneGeometry(1400, 1400, 1, 1);
-  geometry.rotateX(-Math.PI / 2);
-  const material = new THREE.MeshStandardMaterial({
-    color: 0x0c83c9,
-    roughness: 0.5,
-    metalness: 0.1,
-    transparent: true,
-    opacity: 0.94,
-  });
-  const ocean = new THREE.Mesh(geometry, material);
-  ocean.position.y = -1.4;
-  ocean.receiveShadow = true;
-  world.add(ocean);
-}
-
-function createCylinder(radius, height, color, position) {
-  const mesh = new THREE.Mesh(
-    new THREE.CylinderGeometry(radius, radius, height, 24),
-    new THREE.MeshStandardMaterial({ color, roughness: 0.72 })
-  );
-  mesh.position.copy(position);
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  world.add(mesh);
-  return mesh;
-}
-
-function createBox(w, h, d, color, position) {
-  const mesh = new THREE.Mesh(
-    new THREE.BoxGeometry(w, h, d),
-    new THREE.MeshStandardMaterial({ color, roughness: 0.7 })
-  );
-  mesh.position.copy(position);
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  world.add(mesh);
-  return mesh;
-}
-
-function createCone(radius, height, color, position) {
-  const mesh = new THREE.Mesh(
-    new THREE.ConeGeometry(radius, height, 32),
-    new THREE.MeshStandardMaterial({ color, roughness: 0.8 })
-  );
-  mesh.position.copy(position);
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  world.add(mesh);
-  return mesh;
-}
-
-function addLandmarkLabel(text, x, y, z) {
-  const canvas = document.createElement('canvas');
-  canvas.width = 512;
-  canvas.height = 128;
-  const ctx = canvas.getContext('2d');
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.fillStyle = 'rgba(4, 14, 28, 0.72)';
-  roundRect(ctx, 12, 22, 488, 76, 20);
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(255,255,255,0.28)';
-  ctx.lineWidth = 3;
-  ctx.stroke();
-  ctx.fillStyle = '#fff';
-  ctx.font = 'bold 40px system-ui, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(text, 256, 61);
-  const texture = new THREE.CanvasTexture(canvas);
-  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true }));
-  sprite.position.set(x, y, z);
-  sprite.scale.set(34, 8.5, 1);
-  world.add(sprite);
-  return sprite;
-}
-
-function roundRect(ctx, x, y, w, h, r) {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
-  ctx.closePath();
-}
-
-function createLandmarks() {
-  for (const lm of LANDMARKS) {
-    const h = terrainHeight(lm.x, lm.z);
-    const marker = new THREE.Mesh(
-      new THREE.SphereGeometry(3.4, 20, 20),
-      new THREE.MeshStandardMaterial({ color: discovered.has(lm.id) ? 0x64f08a : 0xffd257, emissive: 0x1a1605, roughness: 0.35 })
-    );
-    marker.position.set(lm.x, Math.max(h, lm.y) + 7, lm.z);
-    marker.userData.landmarkId = lm.id;
-    marker.castShadow = true;
-    world.add(marker);
-
-    const ring = new THREE.Mesh(
-      new THREE.TorusGeometry(lm.radius, 0.25, 8, 48),
-      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.22 })
-    );
-    ring.position.set(lm.x, Math.max(h, lm.y) + 0.4, lm.z);
-    ring.rotation.x = Math.PI / 2;
-    world.add(ring);
-
-    addLandmarkLabel(lm.name, lm.x, Math.max(h, lm.y) + 18, lm.z);
-  }
-}
-
-function createRings() {
-  for (const ringData of RINGS) {
-    const ring = new THREE.Mesh(
-      new THREE.TorusGeometry(ringData.r, 0.5, 12, 64),
-      new THREE.MeshStandardMaterial({ color: 0xffb637, emissive: 0x442000, roughness: 0.28 })
-    );
-    ring.position.set(ringData.x, ringData.y, ringData.z);
-    ring.rotation.y = Math.PI / 2;
-    ring.castShadow = true;
-    ring.userData.challengeRing = true;
-    world.add(ring);
-  }
-}
-
-function createTown() {
-  const buildingColors = [0xffcf6d, 0xf3f0d7, 0xb5d8ff, 0xff9f8f, 0xd9c4ff];
-  let i = 0;
-  for (let x = -78; x <= -30; x += 16) {
-    for (let z = 78; z <= 118; z += 14) {
-      const h = terrainHeight(x, z);
-      const height = 6 + ((i * 7) % 10);
-      const b = createBox(9, height, 9, buildingColors[i % buildingColors.length], new THREE.Vector3(x, h + height / 2, z));
-      const roof = createCone(7, 4, 0xb6573e, new THREE.Vector3(x, h + height + 2, z));
-      roof.rotation.y = Math.PI / 4;
-      i++;
+  for (let iz = 0; iz <= segments; iz++) {
+    const z = -half + (iz / segments) * size;
+    for (let ix = 0; ix <= segments; ix++) {
+      const x = -half + (ix / segments) * size;
+      const inside = pointInPolygon(x, z, islandOutline);
+      let y = heightAt(x, z);
+      if (!inside) y = -2.4;
+      positions.push(x, y, z);
+      const c = terrainColorAt(x, z, y);
+      if (!inside) c.set(0x2679a8);
+      colors.push(c.r, c.g, c.b);
+      uvs.push(ix / segments, iz / segments);
     }
   }
-  createCylinder(5, 1.4, 0x5db4e8, new THREE.Vector3(-54, terrainHeight(-54, 94) + 0.8, 94));
-}
 
-function createWindFarm() {
-  const positions = [[-110, -52], [-90, -48], [-72, -35], [-105, -20]];
-  for (const [x, z] of positions) {
-    const h = terrainHeight(x, z);
-    createCylinder(1.2, 18, 0xf2f2e9, new THREE.Vector3(x, h + 9, z));
-    const hub = new THREE.Mesh(new THREE.SphereGeometry(2, 16, 16), new THREE.MeshStandardMaterial({ color: 0xf8f8f8 }));
-    hub.position.set(x, h + 18, z);
-    hub.castShadow = true;
-    world.add(hub);
-    for (let a = 0; a < 3; a++) {
-      const blade = createBox(1.1, 11, 0.35, 0xffffff, new THREE.Vector3(x, h + 18, z));
-      blade.rotation.z = a * Math.PI * 2 / 3;
-      blade.position.x += Math.cos(blade.rotation.z) * 4;
-      blade.position.y += Math.sin(blade.rotation.z) * 4;
+  for (let iz = 0; iz < segments; iz++) {
+    for (let ix = 0; ix < segments; ix++) {
+      const a = iz * (segments + 1) + ix;
+      const b = a + 1;
+      const c = a + (segments + 1);
+      const d = c + 1;
+      indices.push(a, c, b, b, c, d);
     }
   }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+
+  const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.88, metalness: 0.02 });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.receiveShadow = true;
+  terrainGroup.add(mesh);
 }
 
-function createLighthouse() {
-  const x = -116, z = 64, h = terrainHeight(x, z);
-  createCylinder(4, 28, 0xffffff, new THREE.Vector3(x, h + 14, z));
-  createCylinder(4.6, 3, 0xd74835, new THREE.Vector3(x, h + 29, z));
-  const light = new THREE.PointLight(0xfff4bd, 1.5, 90);
-  light.position.set(x, h + 32, z);
-  world.add(light);
+function createWater() {
+  const geo = new THREE.CircleGeometry(900, 96);
+  const sea = new THREE.Mesh(geo, matWater);
+  sea.rotation.x = -Math.PI / 2;
+  sea.position.y = 2.0;
+  sea.receiveShadow = true;
+  scene.add(sea);
+
+  const lakeGeo = new THREE.CircleGeometry(1, 64);
+  const lake = new THREE.Mesh(lakeGeo, matWater.clone());
+  lake.scale.set(zones.lake.radiusX, zones.lake.radiusZ, 1);
+  lake.rotation.x = -Math.PI / 2;
+  lake.position.set(zones.lake.x, 6.0, zones.lake.z);
+  terrainGroup.add(lake);
 }
 
-function createBridgeAndPier() {
-  const bridge = createBox(44, 1.8, 6, 0x8d6c4b, new THREE.Vector3(24, terrainHeight(24, 48) + 7, 48));
-  bridge.rotation.y = -0.45;
-  const pier = createBox(8, 1.2, 46, 0x8a6240, new THREE.Vector3(-48, terrainHeight(-48, 120) + 1, 137));
-  pier.rotation.y = 0.05;
+function addCylinder(name, radiusTop, radiusBottom, height, mat, position) {
+  const geo = new THREE.CylinderGeometry(radiusTop, radiusBottom, height, 20);
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.name = name;
+  mesh.position.copy(position);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  propGroup.add(mesh);
+  return mesh;
 }
 
-function createPlayerModel() {
-  const group = new THREE.Group();
-  const body = new THREE.Mesh(new THREE.CapsuleGeometry(1.8, 4.8, 8, 16), new THREE.MeshStandardMaterial({ color: 0x232b36, roughness: 0.42 }));
-  body.castShadow = true;
-  group.add(body);
-  const helmet = new THREE.Mesh(new THREE.SphereGeometry(1.65, 20, 20), new THREE.MeshStandardMaterial({ color: 0x0f1824, metalness: 0.2, roughness: 0.25 }));
-  helmet.position.y = 3.8;
-  helmet.castShadow = true;
-  group.add(helmet);
-  const pack = new THREE.Mesh(new THREE.BoxGeometry(3.2, 4.4, 1.2), new THREE.MeshStandardMaterial({ color: 0x1f2b34, metalness: 0.28, roughness: 0.35 }));
-  pack.position.set(0, 1.4, 1.35);
-  pack.castShadow = true;
-  group.add(pack);
-  for (const x of [-1, 1]) {
-    const thruster = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, 2.4, 16), new THREE.MeshStandardMaterial({ color: 0x5d6672, metalness: 0.4, roughness: 0.3 }));
-    thruster.position.set(x, -1.3, 1.45);
-    thruster.rotation.x = Math.PI / 2;
-    group.add(thruster);
+function addBox(name, sx, sy, sz, mat, position) {
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), mat);
+  mesh.name = name;
+  mesh.position.copy(position);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  propGroup.add(mesh);
+  return mesh;
+}
+
+function addHouse(x, z, w = 13, d = 11, h = 9, roofColor = matRoof) {
+  const y = heightAt(x, z);
+  addBox('house', w, h, d, matTown, new THREE.Vector3(x, y + h / 2, z));
+  const roof = new THREE.Mesh(new THREE.ConeGeometry(Math.max(w, d) * .75, h * .55, 4), roofColor);
+  roof.rotation.y = Math.PI / 4;
+  roof.position.set(x, y + h + h * .28, z);
+  roof.castShadow = true;
+  roof.receiveShadow = true;
+  propGroup.add(roof);
+}
+
+function addWindmill(x, z) {
+  const y = heightAt(x, z);
+  const pole = addCylinder('windmill_pole', 1.2, 1.6, 28, matWhite, new THREE.Vector3(x, y + 14, z));
+  const hub = new THREE.Mesh(new THREE.SphereGeometry(2.2, 16, 8), matWhite);
+  hub.position.set(x, y + 29, z + 0.8);
+  hub.castShadow = true;
+  propGroup.add(hub);
+  for (let i = 0; i < 3; i++) {
+    const blade = addBox('windmill_blade', 2, 15, .5, matWhite, new THREE.Vector3(x, y + 29, z + .8));
+    blade.rotation.z = i * Math.PI * 2 / 3;
+    blade.position.x += Math.cos(blade.rotation.z + Math.PI / 2) * 5;
+    blade.position.y += Math.sin(blade.rotation.z + Math.PI / 2) * 5;
   }
-  world.add(group);
-  return group;
+  return pole;
 }
 
-createOcean();
+function addTree(x, z, scale = 1) {
+  const y = heightAt(x, z);
+  const trunk = addCylinder('tree_trunk', .7 * scale, .9 * scale, 5 * scale, matWood, new THREE.Vector3(x, y + 2.5 * scale, z));
+  const leaves = new THREE.Mesh(new THREE.ConeGeometry(4.5 * scale, 11 * scale, 10), matGrass);
+  leaves.position.set(x, y + 10 * scale, z);
+  leaves.castShadow = true;
+  leaves.receiveShadow = true;
+  propGroup.add(leaves);
+}
+
+function addLighthouse() {
+  const x = zones.lighthouseCape.x, z = zones.lighthouseCape.z;
+  const y = heightAt(x, z);
+  addCylinder('lighthouse', 4.2, 5.2, 36, matWhite, new THREE.Vector3(x, y + 18, z));
+  const top = addCylinder('lighthouse_top', 5.5, 4.2, 6, new THREE.MeshStandardMaterial({ color: 0xd44c3a }), new THREE.Vector3(x, y + 39, z));
+  const light = new THREE.PointLight(0xfff2a6, 1.3, 180);
+  light.position.set(x, y + 43, z);
+  scene.add(light);
+  return top;
+}
+
+function addBridge(x1, z1, x2, z2, mat = matWood) {
+  const mx = (x1 + x2) / 2;
+  const mz = (z1 + z2) / 2;
+  const y = Math.max(heightAt(mx, mz), 9) + 2;
+  const len = distance2(x1, z1, x2, z2);
+  const bridge = addBox('bridge', 5, 2, len, mat, new THREE.Vector3(mx, y, mz));
+  bridge.rotation.y = Math.atan2(x2 - x1, z2 - z1);
+  return bridge;
+}
+
+function addProps() {
+  // Town grid
+  const housePositions = [
+    [54,-148], [75,-156], [99,-150], [120,-132], [88,-112], [58,-110], [114,-164], [72,-132]
+  ];
+  housePositions.forEach((p, i) => addHouse(p[0], p[1], 10 + (i%3)*3, 10, 8 + (i%2)*3));
+  addBox('plaza', 36, .7, 36, new THREE.MeshStandardMaterial({ color: 0xcaa574, roughness: .8 }), new THREE.Vector3(72, heightAt(72,-128)+.5, -128));
+  addBridge(-72, 8, -12, -14);
+  addBridge(116, -178, 172, -205);
+
+  // Wind hill
+  addWindmill(-196, 72);
+  addWindmill(-172, 100);
+  addWindmill(-145, 62);
+
+  // Lighthouse and coast rocks
+  addLighthouse();
+  addCylinder('arch_rock_left', 5, 8, 23, matRock, new THREE.Vector3(205, heightAt(205, 10)+11, 10));
+  addCylinder('arch_rock_right', 5, 8, 23, matRock, new THREE.Vector3(223, heightAt(223, 10)+11, 10));
+  const arch = addBox('arch_rock_top', 22, 5, 7, matRock, new THREE.Vector3(214, heightAt(214,10)+25, 10));
+
+  // Ruins
+  [-52, -35, -18].forEach((x, i) => addCylinder('ruin_pillar', 2.4, 3, 18 - i*3, matRock, new THREE.Vector3(x, heightAt(x, 132)+9, 132 + i*10)));
+  addBox('ruin_gate', 24, 5, 4, matRock, new THREE.Vector3(-35, heightAt(-35,142)+21, 142));
+
+  // Forest distribution
+  for (let i = 0; i < 90; i++) {
+    const x = -135 + Math.random() * 120;
+    const z = 72 + Math.random() * 150;
+    if (pointInPolygon(x,z,islandOutline) && distance2(x,z,zones.lake.x,zones.lake.z) > 55) addTree(x, z, .75 + Math.random() * .55);
+  }
+  for (let i = 0; i < 34; i++) {
+    const x = -205 + Math.random() * 90;
+    const z = -155 + Math.random() * 160;
+    if (pointInPolygon(x,z,islandOutline)) addTree(x, z, .65 + Math.random() * .5);
+  }
+
+  // Small island
+  addHouse(252, -222, 10, 9, 7, new THREE.MeshStandardMaterial({ color: 0x4a9bd8 }));
+}
+
+function addLandmarks() {
+  landmarks.forEach((lm) => {
+    const geo = new THREE.SphereGeometry(3.4, 16, 12);
+    const mat = new THREE.MeshStandardMaterial({ color: 0x5ff0ff, emissive: 0x137c98, emissiveIntensity: .85 });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.name = lm.id;
+    mesh.position.set(lm.x, Math.max(lm.y, heightAt(lm.x, lm.z) + 5), lm.z);
+    mesh.userData.landmark = lm;
+    mesh.castShadow = true;
+    landmarkGroup.add(mesh);
+  });
+  totalLandmarksEl.textContent = String(landmarks.length);
+}
+
+function addRings() {
+  ringCourses.forEach((course) => {
+    course.rings.forEach((r, idx) => {
+      const torus = new THREE.Mesh(new THREE.TorusGeometry(8, 0.8, 12, 32), matRing);
+      torus.position.set(r.x, r.y, r.z);
+      torus.rotation.y = idx * 0.35 + Math.PI / 2;
+      torus.castShadow = true;
+      torus.userData.course = course.id;
+      ringGroup.add(torus);
+    });
+  });
+}
+
+createWater();
 createTerrain();
-createTown();
-createWindFarm();
-createLighthouse();
-createBridgeAndPier();
-createLandmarks();
-createRings();
-const playerModel = createPlayerModel();
+addProps();
+addLandmarks();
+addRings();
 
-function showMessage(title, body) {
-  ui.message.innerHTML = `<strong>${title}</strong><br>${body}`;
-  ui.message.classList.remove('hidden');
-  messageTimer = 3.2;
+// Player object
+const player = new THREE.Group();
+player.position.set(-40, 56, -190);
+scene.add(player);
+const body = new THREE.Mesh(new THREE.SphereGeometry(3.2, 24, 16), new THREE.MeshStandardMaterial({ color: 0xfff4c8, roughness: .5 }));
+body.castShadow = true;
+player.add(body);
+const backpack = new THREE.Mesh(new THREE.BoxGeometry(3.2, 5.2, 2.2), new THREE.MeshStandardMaterial({ color: 0x2b3e55, roughness: .5 }));
+backpack.position.set(0, 0, 3);
+backpack.castShadow = true;
+player.add(backpack);
+const flame = new THREE.Mesh(new THREE.ConeGeometry(1.4, 6, 16), new THREE.MeshStandardMaterial({ color: 0xffa22b, emissive: 0xff5c00, emissiveIntensity: 1.4 }));
+flame.rotation.x = Math.PI;
+flame.position.set(0, -5.2, 2.2);
+player.add(flame);
+
+const keys = {};
+window.addEventListener('keydown', (e) => { keys[e.code] = true; });
+window.addEventListener('keyup', (e) => { keys[e.code] = false; });
+
+const playerState = {
+  velocity: new THREE.Vector3(0, 0, 0),
+  moveAccel: 82,
+  maxMoveSpeed: 58,       // Always boosted speed
+  verticalThrust: 62,
+  downThrust: 36,
+  gravity: 28,            // Free-fall baseline
+  drag: 0.90,
+  airControl: 1.0,
+  mouseYaw: 0,
+  mousePitch: -0.26,
+  cameraDistance: 28,
+  cameraHeight: 10,
+  started: false
+};
+
+function showMessage(text, ms = 2400) {
+  messageEl.textContent = text;
+  messageEl.classList.remove('hidden');
+  clearTimeout(showMessage.timer);
+  showMessage.timer = setTimeout(() => messageEl.classList.add('hidden'), ms);
 }
 
+startButton.addEventListener('click', startGame);
+renderer.domElement.addEventListener('click', () => {
+  if (playerState.started && document.pointerLockElement !== renderer.domElement) renderer.domElement.requestPointerLock();
+});
 function startGame() {
-  started = true;
-  ui.startPanel.style.display = 'none';
-  if (canvas.requestPointerLock && window.matchMedia('(hover: hover)').matches) {
-    canvas.requestPointerLock();
-  }
+  playerState.started = true;
+  startOverlay.style.display = 'none';
+  renderer.domElement.requestPointerLock?.();
 }
 
-ui.startPanel.addEventListener('click', startGame);
-canvas.addEventListener('click', () => {
-  if (!started) startGame();
+document.addEventListener('mousemove', (e) => {
+  if (document.pointerLockElement !== renderer.domElement) return;
+  playerState.mouseYaw -= e.movementX * 0.0021;
+  playerState.mousePitch -= e.movementY * 0.0016;
+  playerState.mousePitch = clamp(playerState.mousePitch, -0.95, 0.42);
 });
 
-window.addEventListener('keydown', (e) => {
-  keys[e.code.toLowerCase()] = true;
-});
-window.addEventListener('keyup', (e) => {
-  keys[e.code.toLowerCase()] = false;
-});
-window.addEventListener('mousemove', (e) => {
-  if (!started) return;
-  const pointerLocked = document.pointerLockElement === canvas;
-  if (!pointerLocked && window.matchMedia('(hover: hover)').matches) return;
-  player.yaw -= e.movementX * 0.0024;
-  player.pitch = clamp(player.pitch - e.movementY * 0.0018, -0.86, 0.46);
-});
-
-let lastTouch = null;
-window.addEventListener('touchstart', (e) => {
-  if (!started) startGame();
-  const touch = e.touches[0];
-  lastTouch = { x: touch.clientX, y: touch.clientY };
-}, { passive: true });
-window.addEventListener('touchmove', (e) => {
-  if (!started || !lastTouch) return;
-  const touch = e.touches[0];
-  const dx = touch.clientX - lastTouch.x;
-  const dy = touch.clientY - lastTouch.y;
-  if (touch.clientX > window.innerWidth * 0.35) {
-    player.yaw -= dx * 0.004;
-    player.pitch = clamp(player.pitch - dy * 0.003, -0.86, 0.46);
-  }
-  lastTouch = { x: touch.clientX, y: touch.clientY };
-}, { passive: true });
-
-for (const btn of document.querySelectorAll('#mobileControls button')) {
-  const code = btn.dataset.key;
-  const keyName = code === 'space' ? 'space' : code === 'shift' ? 'shiftleft' : code === 'e' ? 'keye' : 'key' + code;
-  btn.addEventListener('pointerdown', (e) => { e.preventDefault(); keys[keyName] = true; });
-  btn.addEventListener('pointerup', (e) => { e.preventDefault(); keys[keyName] = false; });
-  btn.addEventListener('pointercancel', () => { keys[keyName] = false; });
-  btn.addEventListener('pointerleave', () => { keys[keyName] = false; });
-}
-
-function getInputVector() {
-  let x = 0, z = 0, y = 0;
-  if (keys['keyw']) z -= 1;
-  if (keys['keys']) z += 1;
-  if (keys['keya']) x -= 1;
-  if (keys['keyd']) x += 1;
-  if (keys['space']) y += 1;
-  if (keys['shiftleft'] || keys['shiftright']) y -= 1;
-  return new THREE.Vector3(x, y, z);
-}
+const forward = new THREE.Vector3();
+const right = new THREE.Vector3();
+const up = new THREE.Vector3(0, 1, 0);
+const desiredCamera = new THREE.Vector3();
+const lookAt = new THREE.Vector3();
 
 function updatePlayer(dt) {
-  if (!started) return;
+  // Camera-based movement. A = left, D = right.
+  const yaw = playerState.mouseYaw;
+  forward.set(Math.sin(yaw), 0, Math.cos(yaw) * -1).normalize();
+  right.crossVectors(forward, up).normalize(); // correct: A subtracts right, D adds right.
 
-  const input = getInputVector();
-  // Phase 1: boost is always enabled. E key is no longer required.
-  const boost = true;
-  const forward = new THREE.Vector3(Math.sin(player.yaw), 0, Math.cos(player.yaw));
-  const right = new THREE.Vector3(Math.cos(player.yaw), 0, -Math.sin(player.yaw));
-  const desired = new THREE.Vector3();
-  desired.addScaledVector(forward, -input.z);
-  // Fix A/D reverse feel: A should move left and D should move right relative to the current camera direction.
-  desired.addScaledVector(right, -input.x);
-  desired.y += input.y;
-  if (desired.lengthSq() > 1) desired.normalize();
+  const input = new THREE.Vector3();
+  if (keys.KeyW) input.add(forward);
+  if (keys.KeyS) input.sub(forward);
+  if (keys.KeyA) input.sub(right);
+  if (keys.KeyD) input.add(right);
+  if (input.lengthSq() > 0) input.normalize();
 
-  // Free fall is allowed when the player is not actively applying thrust.
-  const thrusting = desired.lengthSq() > 0.02;
-  const canUseFuel = player.fuel > 0;
-  const accel = boost && canUseFuel ? 72 : 38;
-  const maxSpeed = boost && canUseFuel ? 54 : 29;
+  const accel = input.multiplyScalar(playerState.moveAccel * dt * playerState.airControl);
+  playerState.velocity.x += accel.x;
+  playerState.velocity.z += accel.z;
 
-  if (thrusting && canUseFuel) {
-    player.velocity.addScaledVector(desired, accel * dt);
-    player.fuel = Math.max(0, player.fuel - 22 * dt);
-  } else {
-    player.fuel = Math.min(player.maxFuel, player.fuel + 10 * dt);
+  // Free fall always applies. Space adds upward jet thrust; Shift adds controlled descent.
+  playerState.velocity.y -= playerState.gravity * dt;
+  if (keys.Space) playerState.velocity.y += playerState.verticalThrust * dt;
+  if (keys.ShiftLeft || keys.ShiftRight) playerState.velocity.y -= playerState.downThrust * dt;
+
+  // Horizontal drag / speed limit.
+  playerState.velocity.x *= Math.pow(playerState.drag, dt * 60);
+  playerState.velocity.z *= Math.pow(playerState.drag, dt * 60);
+  const horizontalSpeed = Math.hypot(playerState.velocity.x, playerState.velocity.z);
+  if (horizontalSpeed > playerState.maxMoveSpeed) {
+    const s = playerState.maxMoveSpeed / horizontalSpeed;
+    playerState.velocity.x *= s;
+    playerState.velocity.z *= s;
   }
+  playerState.velocity.y = clamp(playerState.velocity.y, -80, 46);
 
-  // Free-fall gravity. Horizontal drag remains, but vertical drag is not applied.
-  player.velocity.y -= 16.0 * dt;
-  const horizontalDrag = Math.pow(0.965, dt * 60);
-  player.velocity.x *= horizontalDrag;
-  player.velocity.z *= horizontalDrag;
-  if (player.velocity.length() > maxSpeed) player.velocity.setLength(maxSpeed);
+  player.position.addScaledVector(playerState.velocity, dt);
 
-  player.position.addScaledVector(player.velocity, dt);
-  player.position.x = clamp(player.position.x, -HALF + 4, HALF - 4);
-  player.position.z = clamp(player.position.z, -HALF + 4, HALF - 4);
-
-  const ground = terrainHeight(player.position.x, player.position.z) + 4.2;
+  // Terrain collision.
+  const ground = heightAt(player.position.x, player.position.z) + 4.2;
   if (player.position.y < ground) {
     player.position.y = ground;
-    player.velocity.y = Math.max(0, player.velocity.y);
-    player.fuel = Math.min(player.maxFuel, player.fuel + 18 * dt);
+    if (playerState.velocity.y < 0) playerState.velocity.y *= -0.12;
+    playerState.velocity.x *= 0.75;
+    playerState.velocity.z *= 0.75;
   }
 
-  playerModel.position.copy(player.position);
-  playerModel.rotation.set(0, player.yaw + Math.PI, 0);
-  playerModel.rotation.x = clamp(-player.velocity.y * 0.01, -0.25, 0.25);
+  // Keep player near world bounds.
+  player.position.x = clamp(player.position.x, WORLD_BOUNDS.minX + 8, WORLD_BOUNDS.maxX - 8);
+  player.position.z = clamp(player.position.z, WORLD_BOUNDS.minZ + 8, WORLD_BOUNDS.maxZ - 8);
 
-  const camOffset = new THREE.Vector3(
-    -Math.sin(player.yaw) * 15,
-    7 - player.pitch * 12,
-    -Math.cos(player.yaw) * 15
-  );
-  camera.position.lerp(player.position.clone().add(camOffset), 0.12);
-  const lookAt = player.position.clone().add(new THREE.Vector3(0, 3, 0));
+  // Character faces movement or camera yaw.
+  player.rotation.y = yaw;
+  flame.visible = keys.Space;
+}
+
+function updateCamera(dt) {
+  const yaw = playerState.mouseYaw;
+  const pitch = playerState.mousePitch;
+  const dir = new THREE.Vector3(
+    Math.sin(yaw) * Math.cos(pitch),
+    Math.sin(pitch),
+    -Math.cos(yaw) * Math.cos(pitch)
+  ).normalize();
+
+  desiredCamera.copy(player.position)
+    .addScaledVector(dir, -playerState.cameraDistance)
+    .add(new THREE.Vector3(0, playerState.cameraHeight, 0));
+
+  const ground = heightAt(desiredCamera.x, desiredCamera.z) + 5.5;
+  if (desiredCamera.y < ground) desiredCamera.y = ground;
+
+  camera.position.lerp(desiredCamera, 1 - Math.pow(0.035, dt));
+  lookAt.copy(player.position).add(new THREE.Vector3(0, 5, 0)).addScaledVector(dir, 18);
   camera.lookAt(lookAt);
-
-  checkDiscoveries();
-  checkRings();
 }
 
-function checkDiscoveries() {
-  for (const lm of LANDMARKS) {
-    if (discovered.has(lm.id)) continue;
-    const d = player.position.distanceTo(new THREE.Vector3(lm.x, Math.max(lm.y, terrainHeight(lm.x, lm.z)), lm.z));
-    if (d < lm.radius) {
+const discovered = new Set();
+function updateLandmarks() {
+  landmarkGroup.children.forEach((mesh) => {
+    const lm = mesh.userData.landmark;
+    const d = player.position.distanceTo(mesh.position);
+    mesh.rotation.y += 0.02;
+    mesh.position.y += Math.sin(performance.now() * 0.002 + lm.x) * 0.005;
+    if (!discovered.has(lm.id) && d < lm.radius) {
       discovered.add(lm.id);
-      localStorage.setItem('resortExploreDiscovered', JSON.stringify([...discovered]));
-      showMessage(`${lm.name} を発見`, lm.description);
+      mesh.material.color.set(0x8cff69);
+      mesh.material.emissive.set(0x249117);
+      discoveredEl.textContent = String(discovered.size);
+      showMessage(`発見！\n${lm.name}\n\n${lm.description}`);
     }
-  }
+  });
 }
 
-function checkRings() {
-  for (const obj of world.children) {
-    if (!obj.userData.challengeRing || obj.userData.passed) continue;
-    if (player.position.distanceTo(obj.position) < 7.5) {
-      obj.userData.passed = true;
-      obj.material.color.set(0x64f08a);
-      obj.material.emissive.set(0x094d19);
-      ringCount++;
-      showMessage('リング通過', `チャレンジリング ${ringCount}/${RINGS.length}`);
+function updateRings() {
+  ringGroup.children.forEach((ring) => {
+    ring.rotation.z += 0.01;
+    const d = player.position.distanceTo(ring.position);
+    if (d < 9 && !ring.userData.passed) {
+      ring.userData.passed = true;
+      ring.material = new THREE.MeshStandardMaterial({ color: 0x7cff6b, emissive: 0x1a8b25, emissiveIntensity: .7 });
+      showMessage('リング通過！', 900);
     }
-  }
+  });
 }
 
-function updateUI(dt) {
-  ui.speed.textContent = Math.round(player.velocity.length()).toString();
-  ui.altitude.textContent = Math.max(0, Math.round(player.position.y - terrainHeight(player.position.x, player.position.z))).toString();
-  ui.found.textContent = `${discovered.size}/${LANDMARKS.length}`;
-  ui.fuelBar.style.width = `${Math.round(player.fuel)}%`;
-  if (messageTimer > 0) {
-    messageTimer -= dt;
-    if (messageTimer <= 0) ui.message.classList.add('hidden');
-  }
+function worldToMini(x, z, w, h) {
+  const u = (x - WORLD_BOUNDS.minX) / (WORLD_BOUNDS.maxX - WORLD_BOUNDS.minX);
+  const v = (z - WORLD_BOUNDS.minZ) / (WORLD_BOUNDS.maxZ - WORLD_BOUNDS.minZ);
+  return { x: u * w, y: (1 - v) * h };
 }
 
 function drawMinimap() {
-  const ctx = mapCtx;
-  const w = ui.minimap.width;
-  const h = ui.minimap.height;
-  ctx.clearRect(0, 0, w, h);
-  ctx.fillStyle = 'rgba(9, 132, 194, 0.92)';
-  ctx.fillRect(0, 0, w, h);
+  const rectW = minimapCanvas.width;
+  const rectH = minimapCanvas.height;
+  mini.clearRect(0, 0, rectW, rectH);
+  mini.fillStyle = 'rgba(20, 128, 180, .72)';
+  mini.fillRect(0, 0, rectW, rectH);
 
-  // World -> minimap conversion.
-  // X grows to the right. Z grows upward on the minimap, so the Y pixel is flipped.
-  const toMap = (x, z) => [
-    ((x + HALF) / MAP_SIZE) * w,
-    h - ((z + HALF) / MAP_SIZE) * h,
-  ];
-
-  // Draw approximate island silhouette by sampling points.
-  const step = 2;
-  for (let px = 0; px < w; px += step) {
-    for (let py = 0; py < h; py += step) {
-      const x = (px / w) * MAP_SIZE - HALF;
-      const z = ((h - py) / h) * MAP_SIZE - HALF;
-      const mask = islandMask(x, z);
-      if (mask > 0.12) {
-        ctx.fillStyle = mask < 0.45 ? '#eadfa6' : '#5cc44d';
-        ctx.fillRect(px, py, step + 0.5, step + 0.5);
-      }
-    }
+  // grid
+  mini.strokeStyle = 'rgba(255,255,255,.12)';
+  mini.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const x = rectW * i / 4;
+    const y = rectH * i / 4;
+    mini.beginPath(); mini.moveTo(x, 0); mini.lineTo(x, rectH); mini.stroke();
+    mini.beginPath(); mini.moveTo(0, y); mini.lineTo(rectW, y); mini.stroke();
   }
 
-  for (const lm of LANDMARKS) {
-    const [mx, my] = toMap(lm.x, lm.z);
-    ctx.beginPath();
-    ctx.arc(mx, my, 2.2, 0, Math.PI * 2);
-    ctx.fillStyle = discovered.has(lm.id) ? '#7cff8f' : '#ffd85e';
-    ctx.fill();
-  }
+  // Island outline from same data as terrain.
+  mini.beginPath();
+  islandOutline.forEach((p, i) => {
+    const m = worldToMini(p.x, p.z, rectW, rectH);
+    if (i === 0) mini.moveTo(m.x, m.y); else mini.lineTo(m.x, m.y);
+  });
+  mini.closePath();
+  mini.fillStyle = '#5aa851';
+  mini.fill();
+  mini.strokeStyle = 'rgba(255,255,255,.75)';
+  mini.lineWidth = 2;
+  mini.stroke();
 
-  const [px, py] = toMap(player.position.x, player.position.z);
-  ctx.save();
-  ctx.translate(px, py);
-  // Arrow points toward the same direction as the player's world-facing direction.
-  ctx.rotate(player.yaw);
-  ctx.fillStyle = '#ffffff';
-  ctx.beginPath();
-  ctx.moveTo(0, -7);
-  ctx.lineTo(5, 6);
-  ctx.lineTo(0, 3);
-  ctx.lineTo(-5, 6);
-  ctx.closePath();
-  ctx.fill();
-  ctx.restore();
+  // Lake
+  const lake = worldToMini(zones.lake.x, zones.lake.z, rectW, rectH);
+  mini.fillStyle = '#2e8ccb';
+  mini.beginPath();
+  mini.ellipse(lake.x, lake.y, zones.lake.radiusX / 640 * rectW, zones.lake.radiusZ / 640 * rectH, 0, 0, Math.PI * 2);
+  mini.fill();
+
+  // Landmarks: discovered stronger, undiscovered faint.
+  landmarks.forEach((lm) => {
+    const m = worldToMini(lm.x, lm.z, rectW, rectH);
+    mini.fillStyle = discovered.has(lm.id) ? '#dfff59' : 'rgba(255,255,255,.35)';
+    mini.beginPath();
+    mini.arc(m.x, m.y, discovered.has(lm.id) ? 3.2 : 2.0, 0, Math.PI * 2);
+    mini.fill();
+  });
+
+  // Player arrow. Direction matches world forward.
+  const p = worldToMini(player.position.x, player.position.z, rectW, rectH);
+  const angle = -playerState.mouseYaw + Math.PI; // Three.js forward at yaw=0 is -Z, so add PI for minimap arrow.
+  mini.save();
+  mini.translate(p.x, p.y);
+  mini.rotate(angle);
+  mini.fillStyle = '#ff3d3d';
+  mini.beginPath();
+  mini.moveTo(0, -8);
+  mini.lineTo(5, 6);
+  mini.lineTo(0, 3);
+  mini.lineTo(-5, 6);
+  mini.closePath();
+  mini.fill();
+  mini.restore();
+}
+
+function updateHud() {
+  const ground = heightAt(player.position.x, player.position.z);
+  altitudeEl.textContent = String(Math.max(0, Math.round(player.position.y - ground)));
+  speedEl.textContent = String(Math.round(playerState.velocity.length()));
+}
+
+let last = performance.now();
+function animate(now) {
+  const dt = Math.min(0.033, (now - last) / 1000);
+  last = now;
+
+  if (playerState.started) {
+    updatePlayer(dt);
+    updateLandmarks();
+    updateRings();
+  }
+  updateCamera(dt);
+  updateHud();
+  drawMinimap();
+  renderer.render(scene, camera);
+  requestAnimationFrame(animate);
 }
 
 window.addEventListener('resize', () => {
@@ -593,18 +634,4 @@ window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-let last = performance.now();
-function animate(now) {
-  const dt = Math.min(0.033, (now - last) / 1000);
-  last = now;
-  updatePlayer(dt);
-  updateUI(dt);
-  drawMinimap();
-  renderer.render(scene, camera);
-  requestAnimationFrame(animate);
-}
-
-camera.position.set(-70, 36, 132);
-camera.lookAt(player.position);
-showMessage('準備完了', 'クリックまたはタップで開始。ランドマークとリングを探してください。');
 requestAnimationFrame(animate);

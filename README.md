@@ -1,82 +1,67 @@
-# resort_explore
+# Resort Explore v0.3 - Wuhu-style Island Reconstruction Prototype
 
-ブラウザで動く、リゾート島ジェットパック探索ゲームのプロトタイプです。
+GitHub Pagesで動くThree.js製の探索プロトタイプです。公式素材の抽出や流用はせず、公開マップの位置関係を参考にした**手続き型のリゾート島**として再構築しています。
 
 ## 目的
 
-- GitHub Pagesで直接公開できる状態にする
-- 島をジェットパックで探索できるようにする
-- 火山、湖、町、灯台、風車、ビーチ、小島などのランドマークを配置する
-- ランドマーク発見、リング通過、ミニマップ、燃料ゲージを実装する
+- 火山、中央湖、町、砂浜、風車の丘、灯台岬、遺跡、離島を持つ島を作る
+- ジェットパックで自由探索できるようにする
+- ミニマップと実際の地形を同じ座標データから描く
+- 今後、ランドマーク・リング・バルーン・昼夜変化を追加しやすくする
 
 ## ファイル構成
 
 ```text
 index.html
 README.md
-UPLOAD_TO_GITHUB.md
+IMPLEMENTATION_STEPS.md
+MAP_BUILD_GUIDE.md
 data/
-  landmarks.js
+  islandData.js
 src/
   main.js
   styles.css
 ```
 
-## ローカルで動かす方法
-
-### Mac / Windows 共通
-
-このフォルダで以下を実行します。
-
-```bash
-python3 -m http.server 5173
-```
-
-ブラウザで開きます。
-
-```text
-http://localhost:5173
-```
-
-Node.jsがある場合は以下でも動きます。
-
-```bash
-npx serve .
-```
-
-## GitHub Pagesで公開する方法
-
-1. このZIPを解凍します。
-2. 中身をGitHubリポジトリ `resort_explore` の直下にアップロードします。
-3. `index.html` がリポジトリ直下にあることを確認します。
-4. GitHubで `Settings` → `Pages` を開きます。
-5. `Build and deployment` を `Deploy from a branch` にします。
-6. Branchを `main`、Folderを `/root` にします。
-7. Saveを押します。
-8. 数分後、GitHub PagesのURLが表示されます。
-
 ## 操作
 
 | 操作 | 内容 |
 |---|---|
-| クリック / タップ | 開始 |
-| マウス移動 | 視点操作 |
-| W/A/S/D | 移動 |
+| クリック | 開始 / Pointer Lock |
+| マウス | 視点操作 |
+| W / S | 前進 / 後退 |
+| A / D | 左 / 右 |
 | Space | 上昇 |
 | Shift | 下降 |
-| Boost | 常時ON。Eキー操作は不要 |
 
-スマホでは画面下に簡易ボタンが表示されます。
+## v0.3の重要仕様
 
-## v0.2 Phase 1 更新内容
+- A/Dの左右は修正済み
+- ブーストは常時ON相当
+- 何も押さないと自由落下
+- ミニマップは `data/islandData.js` の島輪郭とランドマーク座標から描画
+- 地形は `heightAt(x, z)` で生成
+- ランドマークは `landmarks` 配列に追加するだけで画面とミニマップへ反映
 
-- A / D の左右操作を修正
-- ブーストを常時ONに変更
-- Eキー入力を不要化
-- 何も押していない時は自由落下する挙動に変更
-- ミニマップの上下方向とプレイヤー矢印の向きを修正
-- ミニマップの描画解像度を改善
+## GitHub Pages反映方法
 
-## 注意
+このフォルダの中身を `resort_explore` リポジトリ直下に上書きアップロードしてください。
 
-これは既存作品の完全再現ではなく、構造を参考にしたオリジナル実装用プロトタイプです。公開時は地名、島の形、BGM、キャラクター、UIなどをオリジナル化してください。
+```text
+resort_explore/
+├─ index.html
+├─ README.md
+├─ IMPLEMENTATION_STEPS.md
+├─ MAP_BUILD_GUIDE.md
+├─ data/
+│  └─ islandData.js
+└─ src/
+   ├─ main.js
+   └─ styles.css
+```
+
+アップロード後、以下を開いて確認します。
+
+```text
+https://ninetyninekouki-ux.github.io/resort_explore/
+```

@@ -1,219 +1,147 @@
 html, body {
   margin: 0;
-  width: 100%;
-  height: 100%;
+  padding: 0;
   overflow: hidden;
-  background: #08182a;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  color: #fff;
-}
-
-#app, #game {
-  position: fixed;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-}
-
-#game {
-  display: block;
-}
-
-#hud {
-  position: fixed;
-  left: max(16px, env(safe-area-inset-left));
-  top: max(14px, env(safe-area-inset-top));
-  width: min(360px, calc(100vw - 32px));
-  padding: 14px 16px;
-  border: 1px solid rgba(255,255,255,0.18);
-  border-radius: 18px;
-  background: rgba(5, 18, 36, 0.58);
-  backdrop-filter: blur(12px);
-  box-sizing: border-box;
-  pointer-events: none;
-}
-
-.title {
-  font-weight: 800;
-  letter-spacing: 0.1em;
-  font-size: 14px;
-  margin-bottom: 10px;
-}
-
-.metrics {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-  font-size: 12px;
-  color: rgba(255,255,255,0.78);
-}
-
-.metrics span {
-  display: block;
-  font-size: 18px;
-  font-weight: 800;
+  background: #07111d;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   color: white;
 }
 
-.fuel-wrap {
-  margin-top: 12px;
+canvas { display: block; }
+
+#hud {
+  position: fixed;
+  left: 16px;
+  top: 16px;
   display: flex;
-  gap: 10px;
-  align-items: center;
-  font-size: 11px;
-  letter-spacing: 0.08em;
-}
-
-.fuel {
-  flex: 1;
-  height: 10px;
-  border-radius: 999px;
-  background: rgba(255,255,255,0.16);
-  overflow: hidden;
-}
-
-#fuelBar {
-  height: 100%;
-  width: 100%;
-  border-radius: 999px;
-  background: linear-gradient(90deg, #60e7ff, #91ff9c, #ffe269);
-  transition: width 0.08s linear;
-}
-
-#minimap {
-  position: fixed;
-  right: max(16px, env(safe-area-inset-right));
-  top: max(16px, env(safe-area-inset-top));
-  width: 180px;
-  height: 180px;
-  border-radius: 22px;
-  border: 1px solid rgba(255,255,255,0.18);
-  background: rgba(5, 18, 36, 0.58);
-  backdrop-filter: blur(12px);
-}
-
-#message {
-  position: fixed;
-  left: 50%;
-  bottom: 34px;
-  transform: translateX(-50%);
-  max-width: min(540px, calc(100vw - 32px));
-  padding: 14px 18px;
-  border-radius: 16px;
-  background: rgba(3, 13, 27, 0.76);
-  border: 1px solid rgba(255,255,255,0.2);
-  box-shadow: 0 18px 50px rgba(0,0,0,0.25);
-  text-align: center;
-  line-height: 1.55;
-  transition: opacity .25s ease, transform .25s ease;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 10;
   pointer-events: none;
 }
 
-#message.hidden {
-  opacity: 0;
-  transform: translate(-50%, 12px);
-}
-
-#startPanel {
-  position: fixed;
-  inset: 0;
-  display: grid;
-  place-content: center;
-  text-align: center;
-  background: radial-gradient(circle at center, rgba(20, 96, 152, 0.5), rgba(2, 10, 24, 0.92));
-  padding: 24px;
-  box-sizing: border-box;
-  z-index: 10;
-}
-
-#startPanel h1 {
-  margin: 0 0 8px;
-  font-size: clamp(38px, 8vw, 82px);
-  letter-spacing: -0.04em;
-}
-
-#startPanel p {
-  margin: 4px 0;
-  color: rgba(255,255,255,0.82);
-}
-
-#startPanel .small {
-  margin-top: 20px;
+.hud-card {
+  width: max-content;
+  min-width: 140px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(2, 12, 24, 0.68);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 8px 28px rgba(0,0,0,0.28);
+  backdrop-filter: blur(8px);
   font-size: 13px;
+}
+
+.hud-card.title {
+  font-weight: 800;
   letter-spacing: .08em;
 }
 
-.keys {
-  margin: 26px auto 0;
-  max-width: 460px;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  font-size: 13px;
-  color: rgba(255,255,255,0.75);
+.hud-card.hint {
+  opacity: 0.84;
+  max-width: 270px;
+  line-height: 1.45;
 }
 
-.keys div {
-  padding: 10px 12px;
-  border-radius: 14px;
-  background: rgba(255,255,255,0.08);
-}
-
-#mobileControls {
-  display: none;
+#minimapWrap {
   position: fixed;
-  left: max(14px, env(safe-area-inset-left));
-  right: max(14px, env(safe-area-inset-right));
-  bottom: max(16px, env(safe-area-inset-bottom));
-  pointer-events: none;
-  z-index: 4;
+  right: 16px;
+  top: 16px;
+  z-index: 10;
+  width: 220px;
+  height: 248px;
+  border-radius: 18px;
+  background: rgba(2, 12, 24, 0.68);
+  border: 1px solid rgba(255,255,255,0.16);
+  box-shadow: 0 8px 28px rgba(0,0,0,.28);
+  backdrop-filter: blur(8px);
+  overflow: hidden;
 }
 
-#mobileControls button {
-  width: 58px;
-  height: 48px;
-  border: 1px solid rgba(255,255,255,0.24);
-  border-radius: 15px;
-  color: #fff;
-  font-weight: 800;
-  background: rgba(5, 18, 36, 0.56);
+#minimap {
+  width: 220px;
+  height: 220px;
+}
+
+.mini-label {
+  height: 28px;
+  text-align: center;
+  font-size: 11px;
+  line-height: 26px;
+  letter-spacing: .12em;
+  opacity: .8;
+}
+
+.message {
+  position: fixed;
+  left: 50%;
+  top: 18%;
+  transform: translateX(-50%);
+  z-index: 20;
+  min-width: 280px;
+  max-width: 560px;
+  padding: 18px 22px;
+  border-radius: 18px;
+  background: rgba(2, 12, 24, .82);
+  border: 1px solid rgba(255,255,255,.22);
+  box-shadow: 0 16px 40px rgba(0,0,0,.36);
+  text-align: center;
   backdrop-filter: blur(10px);
-  pointer-events: auto;
-  touch-action: none;
+  white-space: pre-line;
 }
 
-#mobileControls > button {
-  margin-left: 62px;
+.message.hidden { display: none; }
+
+#startOverlay {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  z-index: 100;
+  background: radial-gradient(circle at center, rgba(20, 64, 110, .78), rgba(2, 9, 18, .94));
 }
 
-#mobileControls .row {
-  display: flex;
-  gap: 8px;
-  margin-top: 8px;
+.start-panel {
+  width: min(88vw, 520px);
+  border-radius: 26px;
+  padding: 30px;
+  background: rgba(0, 10, 24, .68);
+  border: 1px solid rgba(255,255,255,.22);
+  box-shadow: 0 20px 70px rgba(0,0,0,.4);
+  text-align: center;
 }
 
-#mobileControls .right {
-  position: absolute;
-  right: 0;
-  bottom: 0;
+.start-panel h1 {
+  margin: 0 0 8px;
+  font-size: 36px;
+  letter-spacing: .04em;
 }
 
-#mobileControls .right button {
-  width: 72px;
+.start-panel p {
+  margin: 10px 0;
+  line-height: 1.65;
 }
 
-@media (hover: none), (pointer: coarse) {
-  #mobileControls {
-    display: block;
-  }
-  #minimap {
-    width: 134px;
-    height: 134px;
-  }
-  .keys {
-    grid-template-columns: 1fr;
-  }
-  #hud {
-    width: min(300px, calc(100vw - 170px));
-  }
+.start-panel .small {
+  font-size: 13px;
+  opacity: .82;
+}
+
+#startButton {
+  margin-top: 18px;
+  padding: 12px 34px;
+  border: 0;
+  border-radius: 999px;
+  background: white;
+  color: #0b1a2d;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+@media (max-width: 760px) {
+  #hud { left: 10px; top: 10px; gap: 6px; }
+  .hud-card { font-size: 12px; min-width: 116px; padding: 7px 9px; }
+  #minimapWrap { width: 164px; height: 192px; right: 10px; top: 10px; }
+  #minimap { width: 164px; height: 164px; }
+  .mini-label { height: 28px; line-height: 26px; }
 }
