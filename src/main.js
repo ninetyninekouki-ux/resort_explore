@@ -439,29 +439,35 @@ function updatePlayer(dt) {
   if (!started) return;
 
   const input = getInputVector();
-  const boost = keys['keye'];
+  // Phase 1: boost is always enabled. E key is no longer required.
+  const boost = true;
   const forward = new THREE.Vector3(Math.sin(player.yaw), 0, Math.cos(player.yaw));
   const right = new THREE.Vector3(Math.cos(player.yaw), 0, -Math.sin(player.yaw));
   const desired = new THREE.Vector3();
   desired.addScaledVector(forward, -input.z);
-  desired.addScaledVector(right, input.x);
+  // Fix A/D reverse feel: A should move left and D should move right relative to the current camera direction.
+  desired.addScaledVector(right, -input.x);
   desired.y += input.y;
   if (desired.lengthSq() > 1) desired.normalize();
 
-  const thrusting = desired.lengthSq() > 0.02 || boost;
+  // Free fall is allowed when the player is not actively applying thrust.
+  const thrusting = desired.lengthSq() > 0.02;
   const canUseFuel = player.fuel > 0;
   const accel = boost && canUseFuel ? 72 : 38;
   const maxSpeed = boost && canUseFuel ? 54 : 29;
 
   if (thrusting && canUseFuel) {
     player.velocity.addScaledVector(desired, accel * dt);
-    player.fuel = Math.max(0, player.fuel - (boost ? 22 : 12) * dt);
+    player.fuel = Math.max(0, player.fuel - 22 * dt);
   } else {
     player.fuel = Math.min(player.maxFuel, player.fuel + 10 * dt);
   }
 
-  player.velocity.y -= 7.0 * dt;
-  player.velocity.multiplyScalar(Math.pow(0.965, dt * 60));
+  // Free-fall gravity. Horizontal drag remains, but vertical drag is not applied.
+  player.velocity.y -= 16.0 * dt;
+  const horizontalDrag = Math.pow(0.965, dt * 60);
+  player.velocity.x *= horizontalDrag;
+  player.velocity.z *= horizontalDrag;
   if (player.velocity.length() > maxSpeed) player.velocity.setLength(maxSpeed);
 
   player.position.addScaledVector(player.velocity, dt);
@@ -536,14 +542,19 @@ function drawMinimap() {
   ctx.fillStyle = 'rgba(9, 132, 194, 0.92)';
   ctx.fillRect(0, 0, w, h);
 
-  const toMap = (x, z) => [((x + HALF) / MAP_SIZE) * w, ((z + HALF) / MAP_SIZE) * h];
+  // World -> minimap conversion.
+  // X grows to the right. Z grows upward on the minimap, so the Y pixel is flipped.
+  const toMap = (x, z) => [
+    ((x + HALF) / MAP_SIZE) * w,
+    h - ((z + HALF) / MAP_SIZE) * h,
+  ];
 
   // Draw approximate island silhouette by sampling points.
-  const step = 4;
+  const step = 2;
   for (let px = 0; px < w; px += step) {
     for (let py = 0; py < h; py += step) {
       const x = (px / w) * MAP_SIZE - HALF;
-      const z = (py / h) * MAP_SIZE - HALF;
+      const z = ((h - py) / h) * MAP_SIZE - HALF;
       const mask = islandMask(x, z);
       if (mask > 0.12) {
         ctx.fillStyle = mask < 0.45 ? '#eadfa6' : '#5cc44d';
@@ -563,7 +574,8 @@ function drawMinimap() {
   const [px, py] = toMap(player.position.x, player.position.z);
   ctx.save();
   ctx.translate(px, py);
-  ctx.rotate(-player.yaw);
+  // Arrow points toward the same direction as the player's world-facing direction.
+  ctx.rotate(player.yaw);
   ctx.fillStyle = '#ffffff';
   ctx.beginPath();
   ctx.moveTo(0, -7);
