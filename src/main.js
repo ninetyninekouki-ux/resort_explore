@@ -499,7 +499,7 @@ function checkDiscoveries() {
     if (d < lm.radius) {
       discovered.add(lm.id);
       localStorage.setItem('resortExploreDiscovered', JSON.stringify([...discovered]));
-      showMessage(`${lm.name} ãçºè¦`, lm.description);
+      showMessage(`${lm.name} を発見`, lm.description);
     }
   }
 }
@@ -512,7 +512,7 @@ function checkRings() {
       obj.material.color.set(0x64f08a);
       obj.material.emissive.set(0x094d19);
       ringCount++;
-      showMessage('ãªã³ã°éé', `ãã£ã¬ã³ã¸ãªã³ã° ${ringCount}/${RINGS.length}`);
+      showMessage('リング通過', `チャレンジリング ${ringCount}/${RINGS.length}`);
     }
   }
 }
@@ -594,5 +594,5 @@ function animate(now) {
 
 camera.position.set(-70, 36, 132);
 camera.lookAt(player.position);
-showMessage('æºåå®äº', 'ã¯ãªãã¯ã¾ãã¯ã¿ããã§éå§ãã©ã³ããã¼ã¯ã¨ãªã³ã°ãæ¢ãã¦ãã ããã');
+showMessage('準備完了', 'クリックまたはタップで開始。ランドマークとリングを探してください。');
 requestAnimationFrame(animate);
