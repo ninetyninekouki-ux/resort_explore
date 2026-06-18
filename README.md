@@ -1,13 +1,23 @@
-# Resort Explore v0.3 - Wuhu-style Island Reconstruction Prototype
+# Resort Explore v0.4 - Wuhu-style Island Reconstruction Prototype
 
-GitHub Pagesで動くThree.js製の探索プロトタイプです。公式素材の抽出や流用はせず、公開マップの位置関係を参考にした**手続き型のリゾート島**として再構築しています。
+ブラウザで動く、リゾート島ジェットパック探索ゲームのプロトタイプです。
 
-## 目的
+## v0.4 の目的
 
-- 火山、中央湖、町、砂浜、風車の丘、灯台岬、遺跡、離島を持つ島を作る
-- ジェットパックで自由探索できるようにする
-- ミニマップと実際の地形を同じ座標データから描く
-- 今後、ランドマーク・リング・バルーン・昼夜変化を追加しやすくする
+v0.3 は「島・火山・湖・町・風車・灯台がある」状態でしたが、島全体がまだ丸く、ウーフーアイランドらしい非対称な地形構造が弱い状態でした。
+
+v0.4 では以下を改善しています。
+
+- 島の輪郭を丸型から非対称なリゾート島型に変更
+- 南東へ伸びる砂浜・砂州を追加
+- 中央湖に加えて上流の池と川・滝導線を追加
+- 町を南側に再配置し、建物密度を増加
+- 道路・湖畔道・海岸遊歩道を追加
+- 風車の丘を西側に整理
+- 離島・岩礁を追加
+- ミニマップに道・離島・上流の池を表示
+- ランドマークを20個から26個に増加
+- 火山登山リングコースを追加
 
 ## ファイル構成
 
@@ -16,6 +26,7 @@ index.html
 README.md
 IMPLEMENTATION_STEPS.md
 MAP_BUILD_GUIDE.md
+PHASE2_REVIEW.md
 data/
   islandData.js
 src/
@@ -23,45 +34,63 @@ src/
   styles.css
 ```
 
-## 操作
+## 主に触るファイル
 
-| 操作 | 内容 |
-|---|---|
-| クリック | 開始 / Pointer Lock |
-| マウス | 視点操作 |
-| W / S | 前進 / 後退 |
-| A / D | 左 / 右 |
-| Space | 上昇 |
-| Shift | 下降 |
-
-## v0.3の重要仕様
-
-- A/Dの左右は修正済み
-- ブーストは常時ON相当
-- 何も押さないと自由落下
-- ミニマップは `data/islandData.js` の島輪郭とランドマーク座標から描画
-- 地形は `heightAt(x, z)` で生成
-- ランドマークは `landmarks` 配列に追加するだけで画面とミニマップへ反映
-
-## GitHub Pages反映方法
-
-このフォルダの中身を `resort_explore` リポジトリ直下に上書きアップロードしてください。
+### 地形・島の形
 
 ```text
-resort_explore/
-├─ index.html
-├─ README.md
-├─ IMPLEMENTATION_STEPS.md
-├─ MAP_BUILD_GUIDE.md
-├─ data/
-│  └─ islandData.js
-└─ src/
-   ├─ main.js
-   └─ styles.css
+data/islandData.js
 ```
 
-アップロード後、以下を開いて確認します。
+以下を編集します。
+
+```js
+islandOutline       // 本島の外形
+secondaryIslands    // 離島・岩礁
+zones               // 火山・湖・町・砂浜などの領域
+pathRoutes          // 道・遊歩道
+landmarks           // 発見ポイント
+ringCourses         // リングコース
+```
+
+### 表示・生成処理
+
+```text
+src/main.js
+```
+
+以下を編集します。
+
+```js
+heightAt(x, z)      // 地形の高さ生成
+terrainColorAt()    // 地表色
+addProps()          // 建物・木・風車・灯台など
+addPathRoutes()     // 道路生成
+drawMinimap()       // ミニマップ
+```
+
+## GitHub Pagesへの反映
+
+このフォルダの中身を `resort_explore` の直下に上書きアップロードしてください。
+
+```text
+index.html
+README.md
+IMPLEMENTATION_STEPS.md
+MAP_BUILD_GUIDE.md
+PHASE2_REVIEW.md
+data
+src
+```
+
+アップロード後、以下を開いて強制更新してください。
 
 ```text
 https://ninetyninekouki-ux.github.io/resort_explore/
+```
+
+Mac の強制更新:
+
+```text
+Command + Shift + R
 ```

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { WORLD_BOUNDS, islandOutline, zones, landmarks, ringCourses } from '../data/islandData.js';
+import { WORLD_BOUNDS, islandOutline, secondaryIslands, zones, pathRoutes, landmarks, ringCourses } from '../data/islandData.js';
 
 const canvasHost = document.body;
 const scene = new THREE.Scene();
@@ -47,6 +47,8 @@ const matRoof = new THREE.MeshStandardMaterial({ color: 0xd86642, roughness: 0.7
 const matWhite = new THREE.MeshStandardMaterial({ color: 0xf2f4f2, roughness: 0.72 });
 const matWood = new THREE.MeshStandardMaterial({ color: 0x8c5e33, roughness: 0.86 });
 const matRing = new THREE.MeshStandardMaterial({ color: 0xffd24a, emissive: 0x9a5b00, emissiveIntensity: 0.45, roughness: 0.45 });
+const matPath = new THREE.MeshStandardMaterial({ color: 0xdcc98d, roughness: 0.92 });
+const matPlaza = new THREE.MeshStandardMaterial({ color: 0xcaa574, roughness: 0.82 });
 
 // World groups
 const terrainGroup = new THREE.Group();
@@ -79,12 +81,30 @@ function pointInPolygon(x, z, poly) {
   return inside;
 }
 
+function secondaryIslandFactor(x, z) {
+  let best = 0;
+  secondaryIslands.forEach((isle) => {
+    const d = ellipseDistance(x, z, isle.x, isle.z, isle.radiusX, isle.radiusZ);
+    best = Math.max(best, 1 - smoothstep(0.70, 1.06, d));
+  });
+  return clamp(best, 0, 1);
+}
+
+function isLand(x, z) {
+  return pointInPolygon(x, z, islandOutline) || secondaryIslandFactor(x, z) > 0.03;
+}
+
 function edgeFalloff(x, z) {
-  // Estimate distance to island center and modulate by outline membership.
-  const radial = Math.sqrt((x / 280) ** 2 + (z / 270) ** 2);
-  let f = 1 - smoothstep(0.72, 1.08, radial);
-  if (!pointInPolygon(x, z, islandOutline)) f *= 0.12;
-  return clamp(f, 0, 1);
+  const mainInside = pointInPolygon(x, z, islandOutline);
+  let main = 0;
+  if (mainInside) {
+    // Elliptical falloff biased to the irregular outline. Keeps coast lower while preserving high interior.
+    const radial = Math.sqrt((x / 310) ** 2 + (z / 300) ** 2);
+    main = 1 - smoothstep(0.72, 1.08, radial);
+    main = clamp(main * 1.18, 0, 1);
+  }
+  const secondary = secondaryIslandFactor(x, z);
+  return clamp(Math.max(main, secondary), 0, 1);
 }
 
 function noise2(x, z) {
@@ -97,63 +117,97 @@ function noise2(x, z) {
 
 export function heightAt(x, z) {
   const island = edgeFalloff(x, z);
-  if (island <= 0.02) return -2;
+  if (island <= 0.02) return -2.8;
 
-  let h = 4 + island * 10;
+  let h = 4 + island * 12;
   h += noise2(x, z) * 4.0 * island;
 
-  // Volcano north-east
+  // Separate small islands: low, mostly beach/grass, not giant cliffs.
+  const secondary = secondaryIslandFactor(x, z);
+  if (secondary > 0.03 && !pointInPolygon(x, z, islandOutline)) {
+    h = 3.8 + secondary * 8 + noise2(x, z) * 1.8;
+  }
+
+  // Volcano north-east, kept high and readable from far away.
   const vd = distance2(x, z, zones.volcano.x, zones.volcano.z) / zones.volcano.radius;
   const volcano = Math.max(0, 1 - vd);
-  h += Math.pow(volcano, 2.1) * zones.volcano.height;
+  h += Math.pow(volcano, 2.08) * zones.volcano.height;
 
-  // Crater depression
+  // Crater depression.
   const cd = distance2(x, z, zones.crater.x, zones.crater.z) / zones.crater.radius;
-  if (cd < 1) h -= (1 - cd) * 30;
+  if (cd < 1) h -= (1 - cd) * 34;
 
-  // Western hill
+  // Western wind hill.
   const wh = distance2(x, z, zones.windHill.x, zones.windHill.z) / zones.windHill.radius;
-  h += Math.max(0, 1 - wh) * 24;
+  h += Math.max(0, 1 - wh) * 26;
 
-  // Northern cabins hill
-  const nh = distance2(x, z, -70, 190) / 80;
-  h += Math.max(0, 1 - nh) * 34;
+  // Northern cabins hill.
+  const nh = distance2(x, z, zones.mountainCabins.x, zones.mountainCabins.z) / zones.mountainCabins.radius;
+  h += Math.max(0, 1 - nh) * 40;
 
-  // Lake carved down to waterline
+  // Upper lake / main lake carved down to waterlines.
+  const uld = ellipseDistance(x, z, zones.upperLake.x, zones.upperLake.z, zones.upperLake.radiusX, zones.upperLake.radiusZ);
+  if (uld < 1) h = Math.min(h, 22.5 - (1 - uld) * 3.5);
+
   const ld = ellipseDistance(x, z, zones.lake.x, zones.lake.z, zones.lake.radiusX, zones.lake.radiusZ);
   if (ld < 1) h = Math.min(h, 5.5 - (1 - ld) * 3.2);
 
-  // Beaches flatten low and sandy
-  const bd = ellipseDistance(x, z, zones.beach.x, zones.beach.z, zones.beach.radiusX, zones.beach.radiusZ);
-  if (bd < 1.1) h = Math.min(h, 5.8 + bd * 3.5);
+  // River/waterfall corridor from upper lake to central lake.
+  zones.river.points.forEach((p, idx) => {
+    if (idx === 0) return;
+    const a = zones.river.points[idx - 1];
+    const b = p;
+    const vx = b.x - a.x;
+    const vz = b.z - a.z;
+    const wx = x - a.x;
+    const wz = z - a.z;
+    const len2 = vx * vx + vz * vz;
+    const t = clamp((wx * vx + wz * vz) / len2, 0, 1);
+    const px = a.x + vx * t;
+    const pz = a.z + vz * t;
+    const d = distance2(x, z, px, pz);
+    if (d < zones.river.width) h = Math.min(h, 9.0 + t * 8.0);
+  });
 
-  // Town and marina flattening
+  // Beaches flatten low and sandy.
+  const bd = ellipseDistance(x, z, zones.beach.x, zones.beach.z, zones.beach.radiusX, zones.beach.radiusZ);
+  if (bd < 1.1) h = Math.min(h, 5.6 + bd * 3.2);
+  const sed = ellipseDistance(x, z, zones.southEastBeach.x, zones.southEastBeach.z, zones.southEastBeach.radiusX, zones.southEastBeach.radiusZ);
+  if (sed < 1.1) h = Math.min(h, 5.2 + sed * 3.0);
+
+  // Town, plaza and marina flattening.
   const td = distance2(x, z, zones.town.x, zones.town.z) / zones.town.radius;
-  if (td < 1) h = h * 0.45 + 7.2 * 0.55;
+  if (td < 1) h = h * 0.42 + 7.2 * 0.58;
+  const pd = distance2(x, z, zones.plaza.x, zones.plaza.z) / zones.plaza.radius;
+  if (pd < 1) h = h * 0.22 + 7.0 * 0.78;
   const md = distance2(x, z, zones.marina.x, zones.marina.z) / zones.marina.radius;
-  if (md < 1) h = h * 0.45 + 5.8 * 0.55;
+  if (md < 1) h = h * 0.45 + 5.6 * 0.55;
 
   return h;
 }
 
 function terrainColorAt(x, z, y) {
   const lakeD = ellipseDistance(x, z, zones.lake.x, zones.lake.z, zones.lake.radiusX, zones.lake.radiusZ);
+  const upperLakeD = ellipseDistance(x, z, zones.upperLake.x, zones.upperLake.z, zones.upperLake.radiusX, zones.upperLake.radiusZ);
   const beachD = ellipseDistance(x, z, zones.beach.x, zones.beach.z, zones.beach.radiusX, zones.beach.radiusZ);
+  const southBeachD = ellipseDistance(x, z, zones.southEastBeach.x, zones.southEastBeach.z, zones.southEastBeach.radiusX, zones.southEastBeach.radiusZ);
   const volcanoD = distance2(x, z, zones.volcano.x, zones.volcano.z) / zones.volcano.radius;
   const townD = distance2(x, z, zones.town.x, zones.town.z) / zones.town.radius;
+  const secondary = secondaryIslandFactor(x, z);
 
-  if (lakeD < 1) return new THREE.Color(0x2e8ccb);
-  if (beachD < 1.1 || y < 7) return new THREE.Color(0xeed990);
-  if (volcanoD < 0.9 && y > 30) return new THREE.Color(0x75685d);
-  if (townD < 1.05) return new THREE.Color(0x83bb61);
-  if (y > 70) return new THREE.Color(0x6e665f);
+  if (lakeD < 1 || upperLakeD < 1) return new THREE.Color(0x2e8ccb);
+  if (beachD < 1.1 || southBeachD < 1.1 || y < 6.8) return new THREE.Color(0xeadb9c);
+  if (secondary > .28 && y < 12) return new THREE.Color(0xdedb92);
+  if (volcanoD < 0.95 && y > 32) return new THREE.Color(0x74695f);
+  if (townD < 1.05) return new THREE.Color(0x8fbd69);
+  if (y > 74) return new THREE.Color(0x6b655f);
   if (y > 34) return new THREE.Color(0x5c964d);
-  return new THREE.Color(0x48a85a);
+  return new THREE.Color(0x49aa5c);
 }
 
 function createTerrain() {
-  const size = 640;
-  const segments = 160;
+  const size = 740;
+  const segments = 176;
   const half = size / 2;
   const positions = [];
   const colors = [];
@@ -164,7 +218,7 @@ function createTerrain() {
     const z = -half + (iz / segments) * size;
     for (let ix = 0; ix <= segments; ix++) {
       const x = -half + (ix / segments) * size;
-      const inside = pointInPolygon(x, z, islandOutline);
+      const inside = isLand(x, z);
       let y = heightAt(x, z);
       if (!inside) y = -2.4;
       positions.push(x, y, z);
@@ -212,6 +266,12 @@ function createWater() {
   lake.rotation.x = -Math.PI / 2;
   lake.position.set(zones.lake.x, 6.0, zones.lake.z);
   terrainGroup.add(lake);
+
+  const upperLake = new THREE.Mesh(lakeGeo.clone(), matWater.clone());
+  upperLake.scale.set(zones.upperLake.radiusX, zones.upperLake.radiusZ, 1);
+  upperLake.rotation.x = -Math.PI / 2;
+  upperLake.position.set(zones.upperLake.x, 22.7, zones.upperLake.z);
+  terrainGroup.add(upperLake);
 }
 
 function addCylinder(name, radiusTop, radiusBottom, height, mat, position) {
@@ -293,45 +353,91 @@ function addBridge(x1, z1, x2, z2, mat = matWood) {
   return bridge;
 }
 
+
+function addFlatSegment(name, x1, z1, x2, z2, width, mat) {
+  const mx = (x1 + x2) / 2;
+  const mz = (z1 + z2) / 2;
+  const len = distance2(x1, z1, x2, z2);
+  const y = heightAt(mx, mz) + 0.42;
+  const seg = addBox(name, width, 0.32, len, mat, new THREE.Vector3(mx, y, mz));
+  seg.rotation.y = Math.atan2(x2 - x1, z2 - z1);
+  seg.receiveShadow = true;
+  return seg;
+}
+
+function addPathRoutes() {
+  pathRoutes.forEach((route) => {
+    const mat = new THREE.MeshStandardMaterial({ color: route.color, roughness: .92 });
+    route.points.forEach((p, idx) => {
+      if (idx === 0) return;
+      const a = route.points[idx - 1];
+      addFlatSegment(`path_${route.id}`, a.x, a.z, p.x, p.z, route.width, mat);
+    });
+  });
+}
+
+function addPier(x1, z1, x2, z2) {
+  return addFlatSegment('pier', x1, z1, x2, z2, 8, matWood);
+}
+
 function addProps() {
-  // Town grid
+  addPathRoutes();
+
+  // Town: shifted south/south-east with a small plaza and denser houses.
   const housePositions = [
-    [54,-148], [75,-156], [99,-150], [120,-132], [88,-112], [58,-110], [114,-164], [72,-132]
+    [-22,-168], [0,-164], [24,-168], [46,-158],
+    [-16,-142], [10,-138], [38,-136], [64,-128],
+    [-36,-122], [-8,-116], [20,-112], [50,-108]
   ];
-  housePositions.forEach((p, i) => addHouse(p[0], p[1], 10 + (i%3)*3, 10, 8 + (i%2)*3));
-  addBox('plaza', 36, .7, 36, new THREE.MeshStandardMaterial({ color: 0xcaa574, roughness: .8 }), new THREE.Vector3(72, heightAt(72,-128)+.5, -128));
-  addBridge(-72, 8, -12, -14);
-  addBridge(116, -178, 172, -205);
+  housePositions.forEach((p, i) => addHouse(p[0], p[1], 9 + (i % 4) * 2, 9 + (i % 3), 7 + (i % 2) * 3));
+  addBox('plaza', 42, .7, 42, matPlaza, new THREE.Vector3(zones.plaza.x, heightAt(zones.plaza.x,zones.plaza.z)+.55, zones.plaza.z));
+  addCylinder('plaza_fountain', 5.2, 5.2, 1.5, matWater, new THREE.Vector3(zones.plaza.x, heightAt(zones.plaza.x,zones.plaza.z)+1.35, zones.plaza.z));
 
-  // Wind hill
-  addWindmill(-196, 72);
-  addWindmill(-172, 100);
-  addWindmill(-145, 62);
+  // Bridges / piers.
+  addBridge(-72, 6, -14, -22);
+  addBridge(-58, 78, -32, 48, new THREE.MeshStandardMaterial({ color: 0xb9453a, roughness: .78 }));
+  addPier(70, -210, 118, -252);
+  addPier(-126, -226, -182, -262);
 
-  // Lighthouse and coast rocks
+  // Wind hill, west side.
+  addWindmill(-204, 62);
+  addWindmill(-176, 96);
+  addWindmill(-140, 76);
+  addWindmill(-164, 38);
+
+  // Lighthouse, coast rocks and arch.
   addLighthouse();
-  addCylinder('arch_rock_left', 5, 8, 23, matRock, new THREE.Vector3(205, heightAt(205, 10)+11, 10));
-  addCylinder('arch_rock_right', 5, 8, 23, matRock, new THREE.Vector3(223, heightAt(223, 10)+11, 10));
-  const arch = addBox('arch_rock_top', 22, 5, 7, matRock, new THREE.Vector3(214, heightAt(214,10)+25, 10));
+  addCylinder('arch_rock_left', 5, 8, 24, matRock, new THREE.Vector3(214, heightAt(214, 16)+12, 16));
+  addCylinder('arch_rock_right', 5, 8, 24, matRock, new THREE.Vector3(234, heightAt(234, 16)+12, 16));
+  addBox('arch_rock_top', 25, 5, 7, matRock, new THREE.Vector3(224, heightAt(224,16)+26, 16));
 
-  // Ruins
-  [-52, -35, -18].forEach((x, i) => addCylinder('ruin_pillar', 2.4, 3, 18 - i*3, matRock, new THREE.Vector3(x, heightAt(x, 132)+9, 132 + i*10)));
-  addBox('ruin_gate', 24, 5, 4, matRock, new THREE.Vector3(-35, heightAt(-35,142)+21, 142));
+  // Ruins and north cabins.
+  [-88, -72, -56, -40].forEach((x, i) => addCylinder('ruin_pillar', 2.2, 3, 18 - (i%2)*3, matRock, new THREE.Vector3(x, heightAt(x, 150)+9, 142 + i*8)));
+  addBox('ruin_gate', 27, 5, 4, matRock, new THREE.Vector3(-62, heightAt(-62,156)+21, 156));
+  addHouse(-120, 208, 11, 10, 8, new THREE.MeshStandardMaterial({ color: 0x7f5d3a }));
+  addHouse(-94, 196, 10, 9, 7, new THREE.MeshStandardMaterial({ color: 0x7f5d3a }));
 
-  // Forest distribution
-  for (let i = 0; i < 90; i++) {
-    const x = -135 + Math.random() * 120;
-    const z = 72 + Math.random() * 150;
-    if (pointInPolygon(x,z,islandOutline) && distance2(x,z,zones.lake.x,zones.lake.z) > 55) addTree(x, z, .75 + Math.random() * .55);
-  }
-  for (let i = 0; i < 34; i++) {
-    const x = -205 + Math.random() * 90;
-    const z = -155 + Math.random() * 160;
-    if (pointInPolygon(x,z,islandOutline)) addTree(x, z, .65 + Math.random() * .5);
-  }
+  // Forest distribution: avoid perfect rectangle; use clusters around the lake / east / north.
+  const treeClusters = [
+    { cx: zones.northForest.x, cz: zones.northForest.z, rx: 96, rz: 92, count: 110, minLake: 64 },
+    { cx: zones.eastForest.x, cz: zones.eastForest.z, rx: 92, rz: 100, count: 86, minLake: 68 },
+    { cx: -190, cz: -50, rx: 66, rz: 86, count: 36, minLake: 70 }
+  ];
+  treeClusters.forEach((cluster) => {
+    for (let i = 0; i < cluster.count; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const r = Math.sqrt(Math.random());
+      const x = cluster.cx + Math.cos(angle) * cluster.rx * r;
+      const z = cluster.cz + Math.sin(angle) * cluster.rz * r;
+      if (isLand(x,z) && distance2(x,z,zones.lake.x,zones.lake.z) > cluster.minLake && distance2(x,z,zones.town.x,zones.town.z) > 60) {
+        addTree(x, z, .62 + Math.random() * .62);
+      }
+    }
+  });
 
-  // Small island
-  addHouse(252, -222, 10, 9, 7, new THREE.MeshStandardMaterial({ color: 0x4a9bd8 }));
+  // Beach objects and small island detail.
+  addHouse(302, -250, 10, 9, 7, new THREE.MeshStandardMaterial({ color: 0x4a9bd8 }));
+  addCylinder('north_rock_marker', 5, 8, 10, matRock, new THREE.Vector3(-210, heightAt(-210, 276)+5, 276));
 }
 
 function addLandmarks() {
@@ -572,11 +678,38 @@ function drawMinimap() {
   mini.lineWidth = 2;
   mini.stroke();
 
-  // Lake
+  // Secondary islands.
+  secondaryIslands.forEach((isle) => {
+    const m = worldToMini(isle.x, isle.z, rectW, rectH);
+    mini.fillStyle = isle.type === 'rock' ? '#74695f' : '#d8d985';
+    mini.beginPath();
+    mini.ellipse(m.x, m.y, isle.radiusX / 740 * rectW, isle.radiusZ / 740 * rectH, 0, 0, Math.PI * 2);
+    mini.fill();
+    mini.strokeStyle = 'rgba(255,255,255,.55)';
+    mini.stroke();
+  });
+
+  // Roads / paths.
+  pathRoutes.forEach((route) => {
+    mini.strokeStyle = 'rgba(245,230,160,.75)';
+    mini.lineWidth = Math.max(1, route.width / 4);
+    mini.beginPath();
+    route.points.forEach((pt, i) => {
+      const m = worldToMini(pt.x, pt.z, rectW, rectH);
+      if (i === 0) mini.moveTo(m.x, m.y); else mini.lineTo(m.x, m.y);
+    });
+    mini.stroke();
+  });
+
+  // Lakes.
   const lake = worldToMini(zones.lake.x, zones.lake.z, rectW, rectH);
   mini.fillStyle = '#2e8ccb';
   mini.beginPath();
-  mini.ellipse(lake.x, lake.y, zones.lake.radiusX / 640 * rectW, zones.lake.radiusZ / 640 * rectH, 0, 0, Math.PI * 2);
+  mini.ellipse(lake.x, lake.y, zones.lake.radiusX / 740 * rectW, zones.lake.radiusZ / 740 * rectH, 0, 0, Math.PI * 2);
+  mini.fill();
+  const upperLake = worldToMini(zones.upperLake.x, zones.upperLake.z, rectW, rectH);
+  mini.beginPath();
+  mini.ellipse(upperLake.x, upperLake.y, zones.upperLake.radiusX / 740 * rectW, zones.upperLake.radiusZ / 740 * rectH, 0, 0, Math.PI * 2);
   mini.fill();
 
   // Landmarks: discovered stronger, undiscovered faint.
