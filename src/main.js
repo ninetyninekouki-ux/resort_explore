@@ -81,6 +81,36 @@ function pointInPolygon(x, z, poly) {
   return inside;
 }
 
+function pointSegmentDistance(px, pz, ax, az, bx, bz) {
+  const vx = bx - ax;
+  const vz = bz - az;
+  const wx = px - ax;
+  const wz = pz - az;
+  const len2 = vx * vx + vz * vz;
+  const t = len2 > 0 ? clamp((wx * vx + wz * vz) / len2, 0, 1) : 0;
+  const cx = ax + vx * t;
+  const cz = az + vz * t;
+  return distance2(px, pz, cx, cz);
+}
+
+function distanceToPolygonEdge(x, z, poly) {
+  let best = Infinity;
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i];
+    const b = poly[(i + 1) % poly.length];
+    best = Math.min(best, pointSegmentDistance(x, z, a.x, a.z, b.x, b.z));
+  }
+  return best;
+}
+
+function mainIslandFactor(x, z) {
+  if (!pointInPolygon(x, z, islandOutline)) return 0;
+  // This is the key v0.5 fix: coastline height now follows the polygon outline itself.
+  // v0.4 used an ellipse, which made the island look round even if the outline data was irregular.
+  const shore = distanceToPolygonEdge(x, z, islandOutline);
+  return smoothstep(0, 42, shore);
+}
+
 function secondaryIslandFactor(x, z) {
   let best = 0;
   secondaryIslands.forEach((isle) => {
@@ -95,14 +125,7 @@ function isLand(x, z) {
 }
 
 function edgeFalloff(x, z) {
-  const mainInside = pointInPolygon(x, z, islandOutline);
-  let main = 0;
-  if (mainInside) {
-    // Elliptical falloff biased to the irregular outline. Keeps coast lower while preserving high interior.
-    const radial = Math.sqrt((x / 310) ** 2 + (z / 300) ** 2);
-    main = 1 - smoothstep(0.72, 1.08, radial);
-    main = clamp(main * 1.18, 0, 1);
-  }
+  const main = mainIslandFactor(x, z);
   const secondary = secondaryIslandFactor(x, z);
   return clamp(Math.max(main, secondary), 0, 1);
 }
@@ -129,17 +152,21 @@ export function heightAt(x, z) {
   }
 
   // Volcano north-east, kept high and readable from far away.
-  const vd = distance2(x, z, zones.volcano.x, zones.volcano.z) / zones.volcano.radius;
+  const vd = ellipseDistance(x, z, zones.volcano.x, zones.volcano.z, zones.volcano.radiusX, zones.volcano.radiusZ);
   const volcano = Math.max(0, 1 - vd);
-  h += Math.pow(volcano, 2.08) * zones.volcano.height;
+  h += Math.pow(volcano, 2.25) * zones.volcano.height;
+
+  // Broad volcanic shoulder and high plateau. This prevents the mountain from looking like a single cone.
+  const vsd = ellipseDistance(x, z, zones.volcanoShoulder.x, zones.volcanoShoulder.z, zones.volcanoShoulder.radiusX, zones.volcanoShoulder.radiusZ);
+  h += Math.max(0, 1 - vsd) * zones.volcanoShoulder.height;
 
   // Crater depression.
   const cd = distance2(x, z, zones.crater.x, zones.crater.z) / zones.crater.radius;
   if (cd < 1) h -= (1 - cd) * 34;
 
   // Western wind hill.
-  const wh = distance2(x, z, zones.windHill.x, zones.windHill.z) / zones.windHill.radius;
-  h += Math.max(0, 1 - wh) * 26;
+  const wh = ellipseDistance(x, z, zones.windHill.x, zones.windHill.z, zones.windHill.radiusX, zones.windHill.radiusZ);
+  h += Math.max(0, 1 - wh) * 30;
 
   // Northern cabins hill.
   const nh = distance2(x, z, zones.mountainCabins.x, zones.mountainCabins.z) / zones.mountainCabins.radius;
@@ -174,10 +201,12 @@ export function heightAt(x, z) {
   if (bd < 1.1) h = Math.min(h, 5.6 + bd * 3.2);
   const sed = ellipseDistance(x, z, zones.southEastBeach.x, zones.southEastBeach.z, zones.southEastBeach.radiusX, zones.southEastBeach.radiusZ);
   if (sed < 1.1) h = Math.min(h, 5.2 + sed * 3.0);
+  const snd = ellipseDistance(x, z, zones.sandbarNeck.x, zones.sandbarNeck.z, zones.sandbarNeck.radiusX, zones.sandbarNeck.radiusZ);
+  if (snd < 1.05) h = Math.min(h, 5.0 + snd * 2.5);
 
   // Town, plaza and marina flattening.
-  const td = distance2(x, z, zones.town.x, zones.town.z) / zones.town.radius;
-  if (td < 1) h = h * 0.42 + 7.2 * 0.58;
+  const td = ellipseDistance(x, z, zones.town.x, zones.town.z, zones.town.radiusX, zones.town.radiusZ);
+  if (td < 1) h = h * 0.38 + 7.0 * 0.62;
   const pd = distance2(x, z, zones.plaza.x, zones.plaza.z) / zones.plaza.radius;
   if (pd < 1) h = h * 0.22 + 7.0 * 0.78;
   const md = distance2(x, z, zones.marina.x, zones.marina.z) / zones.marina.radius;
@@ -191,12 +220,13 @@ function terrainColorAt(x, z, y) {
   const upperLakeD = ellipseDistance(x, z, zones.upperLake.x, zones.upperLake.z, zones.upperLake.radiusX, zones.upperLake.radiusZ);
   const beachD = ellipseDistance(x, z, zones.beach.x, zones.beach.z, zones.beach.radiusX, zones.beach.radiusZ);
   const southBeachD = ellipseDistance(x, z, zones.southEastBeach.x, zones.southEastBeach.z, zones.southEastBeach.radiusX, zones.southEastBeach.radiusZ);
-  const volcanoD = distance2(x, z, zones.volcano.x, zones.volcano.z) / zones.volcano.radius;
-  const townD = distance2(x, z, zones.town.x, zones.town.z) / zones.town.radius;
+  const sandbarD = ellipseDistance(x, z, zones.sandbarNeck.x, zones.sandbarNeck.z, zones.sandbarNeck.radiusX, zones.sandbarNeck.radiusZ);
+  const volcanoD = ellipseDistance(x, z, zones.volcano.x, zones.volcano.z, zones.volcano.radiusX, zones.volcano.radiusZ);
+  const townD = ellipseDistance(x, z, zones.town.x, zones.town.z, zones.town.radiusX, zones.town.radiusZ);
   const secondary = secondaryIslandFactor(x, z);
 
   if (lakeD < 1 || upperLakeD < 1) return new THREE.Color(0x2e8ccb);
-  if (beachD < 1.1 || southBeachD < 1.1 || y < 6.8) return new THREE.Color(0xeadb9c);
+  if (beachD < 1.1 || southBeachD < 1.1 || sandbarD < 1.05 || y < 6.8) return new THREE.Color(0xeadb9c);
   if (secondary > .28 && y < 12) return new THREE.Color(0xdedb92);
   if (volcanoD < 0.95 && y > 32) return new THREE.Color(0x74695f);
   if (townD < 1.05) return new THREE.Color(0x8fbd69);
@@ -206,8 +236,8 @@ function terrainColorAt(x, z, y) {
 }
 
 function createTerrain() {
-  const size = 740;
-  const segments = 176;
+  const size = 840;
+  const segments = 232;
   const half = size / 2;
   const positions = [];
   const colors = [];
@@ -385,31 +415,32 @@ function addProps() {
 
   // Town: shifted south/south-east with a small plaza and denser houses.
   const housePositions = [
-    [-22,-168], [0,-164], [24,-168], [46,-158],
-    [-16,-142], [10,-138], [38,-136], [64,-128],
-    [-36,-122], [-8,-116], [20,-112], [50,-108]
+    [-122,-194], [-98,-188], [-74,-184], [-48,-174],
+    [-132,-166], [-104,-160], [-76,-154], [-48,-146],
+    [-116,-132], [-86,-126], [-56,-120], [-28,-112],
+    [-148,-212], [-62,-210], [-18,-190]
   ];
   housePositions.forEach((p, i) => addHouse(p[0], p[1], 9 + (i % 4) * 2, 9 + (i % 3), 7 + (i % 2) * 3));
   addBox('plaza', 42, .7, 42, matPlaza, new THREE.Vector3(zones.plaza.x, heightAt(zones.plaza.x,zones.plaza.z)+.55, zones.plaza.z));
   addCylinder('plaza_fountain', 5.2, 5.2, 1.5, matWater, new THREE.Vector3(zones.plaza.x, heightAt(zones.plaza.x,zones.plaza.z)+1.35, zones.plaza.z));
 
   // Bridges / piers.
-  addBridge(-72, 6, -14, -22);
-  addBridge(-58, 78, -32, 48, new THREE.MeshStandardMaterial({ color: 0xb9453a, roughness: .78 }));
-  addPier(70, -210, 118, -252);
-  addPier(-126, -226, -182, -262);
+  addBridge(-92, 4, -22, -28);
+  addBridge(-72, 82, -48, 52, new THREE.MeshStandardMaterial({ color: 0xb9453a, roughness: .78 }));
+  addPier(-118, -232, -174, -274);
+  addPier(-66, -236, -34, -286);
 
   // Wind hill, west side.
-  addWindmill(-204, 62);
-  addWindmill(-176, 96);
-  addWindmill(-140, 76);
-  addWindmill(-164, 38);
+  addWindmill(-264, 62);
+  addWindmill(-232, 100);
+  addWindmill(-198, 78);
+  addWindmill(-218, 34);
 
   // Lighthouse, coast rocks and arch.
   addLighthouse();
-  addCylinder('arch_rock_left', 5, 8, 24, matRock, new THREE.Vector3(214, heightAt(214, 16)+12, 16));
-  addCylinder('arch_rock_right', 5, 8, 24, matRock, new THREE.Vector3(234, heightAt(234, 16)+12, 16));
-  addBox('arch_rock_top', 25, 5, 7, matRock, new THREE.Vector3(224, heightAt(224,16)+26, 16));
+  addCylinder('arch_rock_left', 5, 8, 24, matRock, new THREE.Vector3(240, heightAt(240, 28)+12, 28));
+  addCylinder('arch_rock_right', 5, 8, 24, matRock, new THREE.Vector3(260, heightAt(260, 28)+12, 28));
+  addBox('arch_rock_top', 25, 5, 7, matRock, new THREE.Vector3(250, heightAt(250,28)+26, 28));
 
   // Ruins and north cabins.
   [-88, -72, -56, -40].forEach((x, i) => addCylinder('ruin_pillar', 2.2, 3, 18 - (i%2)*3, matRock, new THREE.Vector3(x, heightAt(x, 150)+9, 142 + i*8)));
@@ -419,9 +450,9 @@ function addProps() {
 
   // Forest distribution: avoid perfect rectangle; use clusters around the lake / east / north.
   const treeClusters = [
-    { cx: zones.northForest.x, cz: zones.northForest.z, rx: 96, rz: 92, count: 110, minLake: 64 },
-    { cx: zones.eastForest.x, cz: zones.eastForest.z, rx: 92, rz: 100, count: 86, minLake: 68 },
-    { cx: -190, cz: -50, rx: 66, rz: 86, count: 36, minLake: 70 }
+    { cx: zones.northForest.x, cz: zones.northForest.z, rx: 92, rz: 88, count: 92, minLake: 64 },
+    { cx: zones.eastForest.x, cz: zones.eastForest.z, rx: 104, rz: 104, count: 92, minLake: 70 },
+    { cx: -246, cz: 54, rx: 68, rz: 92, count: 42, minLake: 86 }
   ];
   treeClusters.forEach((cluster) => {
     for (let i = 0; i < cluster.count; i++) {
@@ -436,8 +467,8 @@ function addProps() {
   });
 
   // Beach objects and small island detail.
-  addHouse(302, -250, 10, 9, 7, new THREE.MeshStandardMaterial({ color: 0x4a9bd8 }));
-  addCylinder('north_rock_marker', 5, 8, 10, matRock, new THREE.Vector3(-210, heightAt(-210, 276)+5, 276));
+  addHouse(314, -286, 10, 9, 7, new THREE.MeshStandardMaterial({ color: 0x4a9bd8 }));
+  addCylinder('north_rock_marker', 5, 8, 10, matRock, new THREE.Vector3(-214, heightAt(-214, 292)+5, 292));
 }
 
 function addLandmarks() {
@@ -683,7 +714,7 @@ function drawMinimap() {
     const m = worldToMini(isle.x, isle.z, rectW, rectH);
     mini.fillStyle = isle.type === 'rock' ? '#74695f' : '#d8d985';
     mini.beginPath();
-    mini.ellipse(m.x, m.y, isle.radiusX / 740 * rectW, isle.radiusZ / 740 * rectH, 0, 0, Math.PI * 2);
+    mini.ellipse(m.x, m.y, isle.radiusX / (WORLD_BOUNDS.maxX - WORLD_BOUNDS.minX) * rectW, isle.radiusZ / (WORLD_BOUNDS.maxZ - WORLD_BOUNDS.minZ) * rectH, 0, 0, Math.PI * 2);
     mini.fill();
     mini.strokeStyle = 'rgba(255,255,255,.55)';
     mini.stroke();
@@ -705,11 +736,11 @@ function drawMinimap() {
   const lake = worldToMini(zones.lake.x, zones.lake.z, rectW, rectH);
   mini.fillStyle = '#2e8ccb';
   mini.beginPath();
-  mini.ellipse(lake.x, lake.y, zones.lake.radiusX / 740 * rectW, zones.lake.radiusZ / 740 * rectH, 0, 0, Math.PI * 2);
+  mini.ellipse(lake.x, lake.y, zones.lake.radiusX / (WORLD_BOUNDS.maxX - WORLD_BOUNDS.minX) * rectW, zones.lake.radiusZ / (WORLD_BOUNDS.maxZ - WORLD_BOUNDS.minZ) * rectH, 0, 0, Math.PI * 2);
   mini.fill();
   const upperLake = worldToMini(zones.upperLake.x, zones.upperLake.z, rectW, rectH);
   mini.beginPath();
-  mini.ellipse(upperLake.x, upperLake.y, zones.upperLake.radiusX / 740 * rectW, zones.upperLake.radiusZ / 740 * rectH, 0, 0, Math.PI * 2);
+  mini.ellipse(upperLake.x, upperLake.y, zones.upperLake.radiusX / (WORLD_BOUNDS.maxX - WORLD_BOUNDS.minX) * rectW, zones.upperLake.radiusZ / (WORLD_BOUNDS.maxZ - WORLD_BOUNDS.minZ) * rectH, 0, 0, Math.PI * 2);
   mini.fill();
 
   // Landmarks: discovered stronger, undiscovered faint.

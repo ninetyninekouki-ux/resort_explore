@@ -1,101 +1,108 @@
-# ウーフーアイランド風マップ制作ガイド
+# MAP BUILD GUIDE v0.5
 
-## 基本設計
+## 方針
 
-このプロトタイプでは、島を以下の3層で管理します。
+ウーフーアイランド風の再現で最初に重要なのは、建物や木の数ではなく、空から見たときの「輪郭」と「起伏」です。v0.5ではこの2つを優先して修正しています。
 
-```text
-1. islandOutline: 島の外形
-2. zones: 火山、湖、町、砂浜などのエリア定義
-3. landmarks: 発見ポイントの座標と説明
-```
+## 実装方針
 
-この3層を同じ座標系で管理することで、地形生成・ミニマップ・発見システムを同期できます。
+### 1. 島の輪郭
 
-## 座標系
-
-```text
-X: 東西方向
-Z: 南北方向
-Y: 高さ
-```
-
-大まかな配置:
-
-```text
-北 +Z
-
-        山荘 / 遺跡
-   風車          火山
-        中央湖
-灯台       町 / 港
-        砂浜
-
-南 -Z
-```
-
-## 重要ファイル
-
-```text
-data/islandData.js
-```
-
-### islandOutline
-
-島の輪郭です。ミニマップと地形生成で共用します。
+`data/islandData.js` の `islandOutline` を島の唯一の基準線として使います。
 
 ```js
 export const islandOutline = [
-  { x: -255, z: 92 },
-  { x: -232, z: 158 },
+  { x: -320, z: 18 },
   ...
 ];
 ```
 
-点を外側に動かすと島が広がります。点を内側に動かすと湾やくびれができます。
-
-### zones
-
-地形を作るためのエリア定義です。
+`src/main.js` では、各地形頂点からこの輪郭までの距離を計算します。
 
 ```js
-volcano: { x: 142, z: 118, radius: 108, height: 112 }
-lake: { x: 0, z: 26, radiusX: 68, radiusZ: 42 }
-town: { x: 86, z: -132, radius: 54 }
+function mainIslandFactor(x, z) {
+  if (!pointInPolygon(x, z, islandOutline)) return 0;
+  const shore = distanceToPolygonEdge(x, z, islandOutline);
+  return smoothstep(0, 42, shore);
+}
 ```
 
-### landmarks
+これにより、島の外形が円ではなくポリゴン輪郭に従います。
 
-発見ポイントです。
+### 2. 地形の高さ
+
+地形の高さは `heightAt(x, z)` に集約します。
+
+優先順位：
+
+```text
+海か陸か
+↓
+海岸線からの距離
+↓
+火山・丘・山荘エリアの盛り上げ
+↓
+湖・池・川の削り込み
+↓
+砂浜・町・港の平坦化
+```
+
+### 3. 地形エリア
+
+`zones` は地形加工のための制御点です。
 
 ```js
-{ id: 'maka_peak', name: '火山山頂', x: 148, y: 104, z: 124, radius: 28 }
+zones.volcano
+zones.volcanoShoulder
+zones.lake
+zones.upperLake
+zones.town
+zones.beach
+zones.southEastBeach
+zones.windHill
+zones.lighthouseCape
 ```
 
-## 地形生成の仕組み
+## 次に調整する場所
 
-`src/main.js` の `heightAt(x, z)` が地形の高さを決めています。
+### 島がまだ丸い場合
 
-処理内容:
+`mainIslandFactor()` の shore幅を狭めます。
 
-1. 島の輪郭内か判定
-2. 海岸に近いほど低くする
-3. 火山エリアを盛り上げる
-4. 火口を凹ませる
-5. 湖を水面近くまで削る
-6. 町と港を平らにする
-7. 砂浜を低くなだらかにする
+```js
+return smoothstep(0, 42, shore);
+```
 
-## 再現精度を上げる順番
+42を小さくすると海岸線が急になります。大きくするとなだらかになります。
 
-1. まず輪郭
-2. 火山・湖・町の大位置
-3. 砂浜と岬
-4. 道と橋
-5. 建物密度
-6. 木と岩
-7. ランドマークの説明と演出
+### 海岸が角張る場合
 
-## 注意
+`createTerrain()` の `segments` を増やします。
 
-公開する場合は、名称・形状・建物・BGM・UIをそのままコピーせず、オリジナルの島として調整してください。現在のコードは学習・試作用の「Wuhu-style layout」です。
+```js
+const segments = 232;
+```
+
+### 火山をもっと大きくする場合
+
+```js
+volcano: { x: 88, z: 146, radiusX: 128, radiusZ: 114, height: 150 }
+```
+
+`height` を上げると山が高くなります。`radiusX/radiusZ` を上げると山体が広くなります。
+
+### 砂州を細くする場合
+
+```js
+southEastBeach: { x: 270, z: -250, radiusX: 132, radiusZ: 52 }
+```
+
+`radiusZ` を小さくすると細くなります。
+
+## v0.6でやるべきこと
+
+1. 公式マップ風に、北西側の小湖と西の湾を追加
+2. 火山の火口・洞窟入口をモデルとして追加
+3. 南の町に道路網、ホテル、港、灯台側へ向かう道を追加
+4. 湖の滝を透明な水メッシュで表示
+5. 砂浜の浅瀬・波打ち際を追加
