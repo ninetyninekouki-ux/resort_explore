@@ -1,18 +1,24 @@
-# Resort Explore v0.6 - Reference-aligned Island Terrain Prototype
+# Resort Explore v0.7
 
-GitHub Pagesで動くThree.js製の探索プロトタイプです。v0.6では、ユーザー提供の参照画像を基に、まず**輪郭と起伏**を優先して作り直しています。
+Wuhu Island 風のジェットパック探索プロトタイプです。
 
-公式素材の抽出・流用ではなく、公開参考画像を見ながら手続き型の地形データとして再構築しています。
+## v0.7 の主な変更
 
-## v0.6の目的
+- 東西反転の修正方針を反映
+- 参照マップの形に合わせ、C字型の砂州を東〜南東側に追加
+- 火山の西側に高台を追加
+- 高台に湖、城、森を配置
+- 高台湖から滝が流れ落ちる導線を追加
+- 滝の麓に洞窟を追加
+- 火山北側に遺跡を配置
+- 南西の海に大きな離島を配置
+- 街から東へすぐ赤い橋がある構成に変更
+- 街、赤い橋、灯台、火山北、東半島を通る島一周道路を追加
+- 家、海、草原、屋根、岩の簡易プロシージャルテクスチャを追加
 
-- 本家マップに近い島の輪郭へ寄せる
-- 丸い島に見える問題を解消する
-- 北西寄りの大きな火山と広い山腹を作る
-- 中央湖、上流池、滝、町、港、灯台、風車、離島の位置関係を見直す
-- 今後、町・道・段々斜面・浅瀬・岩肌を追加しやすい構造にする
+## アップロード方法
 
-## ファイル構成
+このフォルダの中身を GitHub リポジトリ `resort_explore` の直下に上書きアップロードしてください。
 
 ```text
 index.html
@@ -21,73 +27,15 @@ IMPLEMENTATION_STEPS.md
 MAP_BUILD_GUIDE.md
 PHASE2_REVIEW.md
 data/
-  islandData.js
 src/
-  main.js
-  styles.css
 ```
+
+アップロード後、GitHub Pages を開き、`Command + Shift + R` で強制更新してください。
 
 ## 重要ファイル
 
-### `data/islandData.js`
-
-島の設計データです。
-
-```js
-islandOutline      // 島の輪郭
-secondaryIslands   // ウェッジ島・小島・岩礁
-zones              // 火山、湖、町、砂浜、灯台など
-pathRoutes         // 道・湖畔道・海岸道
-landmarks          // 発見ポイント
-ringCourses        // リングコース
-```
-
-### `src/main.js`
-
-地形生成、描画、操作、ミニマップ、ランドマーク判定を管理します。
-
-特に重要なのは以下です。
-
-```js
-mainIslandFactor()
-edgeFalloff()
-heightAt(x, z)
-terrainColorAt(x, z, y)
-```
-
-## 操作
-
-| 操作 | 内容 |
-|---|---|
-| クリック | 開始 / Pointer Lock |
-| マウス | 視点操作 |
-| W / S | 前進 / 後退 |
-| A / D | 左 / 右 |
-| Space | 上昇 |
-| Shift | 下降 |
-
-## GitHub Pages反映方法
-
-このフォルダの中身を `resort_explore` リポジトリ直下に上書きアップロードしてください。
-
 ```text
-resort_explore/
-├─ index.html
-├─ README.md
-├─ IMPLEMENTATION_STEPS.md
-├─ MAP_BUILD_GUIDE.md
-├─ PHASE2_REVIEW.md
-├─ data/
-│  └─ islandData.js
-└─ src/
-   ├─ main.js
-   └─ styles.css
+data/islandData.js   地形・輪郭・ランドマーク・道路・リング
+src/main.js          Three.js描画、地形生成、操作、ミニマップ
+src/styles.css       HUD/UI
 ```
-
-アップロード後、以下を開いて確認します。
-
-```text
-https://ninetyninekouki-ux.github.io/resort_explore/
-```
-
-反映されない場合は `Command + Shift + R` で強制更新してください。
